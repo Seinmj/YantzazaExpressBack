@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const { PORT } = require ("./config.js");
+const { PORT } = require("./config.js");
 const userRoutes = require("./routes/user.route.js");
 const addressRoutes = require("./routes/address.route.js");
 const categoryRoutes = require("./routes/category.route.js");
@@ -22,13 +22,13 @@ app.use(cors(corsOptions));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 
-app.use('/Api/user',userRoutes);
-app.use('/Api/categorias',categoryRoutes);
-app.use('/Api/productos',productRoutes);
-app.use('/Api/direcciones',addressRoutes);
-app.use('/Api/licoreras',enterpriseRoutes);
-app.use('/Api/motocicletas',motoRoutes);
-app.use('/Api/pedidos',orderRoutes);
+app.use('/Api/user', userRoutes);
+app.use('/Api/categorias', categoryRoutes);
+app.use('/Api/productos', productRoutes);
+app.use('/Api/direcciones', addressRoutes);
+app.use('/Api/tienda', enterpriseRoutes);
+app.use('/Api/motocicletas', motoRoutes);
+app.use('/Api/pedidos', orderRoutes);
 
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en http://localhost:${PORT}`);

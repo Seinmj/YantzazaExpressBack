@@ -7,8 +7,8 @@ const createProduct = async (req, res) => {
     try {
         const query = `
             INSERT INTO producto 
-            (product_name, product_description, product_img, base_price, iva_price, iva_value, iva_porcent, stock, category_id, product_type_id) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+            (product_name, product_description, product_img, base_price, iva_price, iva_value, iva_porcent, stock, category_id) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
             RETURNING *;
         `;
         const values = [
@@ -21,7 +21,6 @@ const createProduct = async (req, res) => {
             data.porcentaje_iva,
             data.stock,
             data.categoria,
-            data.tipo_Producto,
         ];
 
         const { rows } = await pool.query(query, values);
@@ -34,7 +33,7 @@ const createProduct = async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({
-            msg: "Error al registrar el producto: "+error.message,
+            msg: "Error al registrar el producto: " + error.message,
             rta: false
         });
     }
@@ -46,7 +45,7 @@ const getProductCategory = async (req, res) => {
         const { rows } = await pool.query(query, [id]);
 
         if (rows.length === 0) {
-            return res.status(404).json({
+            return res.status(200).json({
                 msg: "Productos no encontrados",
                 rta: false
             });
@@ -59,7 +58,7 @@ const getProductCategory = async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({
-            msg: "Error al obtener los productos: "+error.message,
+            msg: "Error al obtener los productos: " + error.message,
             rta: false
         });
     }
@@ -73,8 +72,8 @@ const updateProduct = async (req, res) => {
         const query = `
             UPDATE producto 
             SET product_name = $1, product_description = $2, product_img = $3, base_price = $4, 
-                iva_price = $5, iva_value = $6, iva_porcent = $7, stock = $8, category_id = $9, product_type_id = $10 
-            WHERE product_id = $11 
+                iva_price = $5, iva_value = $6, iva_porcent = $7, stock = $8, category_id = $9
+            WHERE product_id = $10
             RETURNING *;
         `;
         const values = [
@@ -87,7 +86,6 @@ const updateProduct = async (req, res) => {
             data.porcentaje_iva,
             data.stock,
             data.categoria,
-            data.tipo_Producto,
             id
         ];
 
@@ -108,7 +106,7 @@ const updateProduct = async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({
-            msg: "Error al actualizar el producto: "+error.message,
+            msg: "Error al actualizar el producto: " + error.message,
             rta: false
         });
     }
@@ -135,7 +133,7 @@ const deleteProduct = async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({
-            msg: "Error al eliminar el producto: "+error.message,
+            msg: "Error al eliminar el producto: " + error.message,
             rta: false
         });
     }
