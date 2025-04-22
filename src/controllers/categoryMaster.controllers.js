@@ -88,14 +88,14 @@ const createCategory = async (req, res) => {
             [data.nombre_categoria, data.descripcion_categoria, data.empresa_id]
         );
         res.status(200).json({
-            msg: "Categoria registrada",
+            msg: "Categoría registrada",
             data: rows[0],
             rta:true
         })
     } catch (error) {
         console.error(error);
         res.status(500).json({
-            msg: "Error al crear la categoria: "+error.message,
+            msg: "Error al crear la categoría: "+error.message,
             rta:false
         });
     }

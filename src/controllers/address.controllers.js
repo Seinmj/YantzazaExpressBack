@@ -5,18 +5,18 @@ const pool = require("../db/db.js");
 const createUserAddress = async (req, res) => {
     const data = req.body;
     try {
-        const { rows } = await pool.query("INSERT INTO direcciones_usuario( latitude, longitude, principal_street, secondary_street, alias, description, user_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
-            [data.latitud, data.longitud, data.callePrincipal, data.calleSecundaria, data.alias, data.descripcion, data.usuario_id]
+        const { rows } = await pool.query("INSERT INTO direcciones_usuario( latitude, longitude, principal_street, secondary_street, address_alias, reference, user_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+            [data.latitud, data.longitud, data.callePrincipal, data.calleSecundaria, data.alias, data.referencia, data.usuario_id]
         );
         res.status(200).json({
-            msg: "Direccion registrada",
+            msg: "Dirección registrada",
             data: rows[0],
             rta:true
         })
     } catch (error) {
         console.error(error);
         res.status(500).json({
-            msg: "Error al obtener las direcciones: "+error.message,
+            msg: "Error al crear la dirección: "+error.message,
             rta:false
         });
     }
@@ -80,18 +80,18 @@ const getAddressById = async (req, res) => {
 
         if (rows.length === 0) {
             return res.status(404).json({
-                message: "Direccion no encontrada"
+                message: "Dirección no encontrada"
             });
         }
 
         res.status(200).json({
-            message: "Direccion obtenida con éxito",
+            message: "Dirección obtenida con éxito",
             direccion: rows[0]
         });
     } catch (error) {
         console.error(error);
         res.status(500).json({
-            message: "Error al obtener la direccion",
+            message: "Error al obtener la dirección",
             error: error.message
         });
     }
@@ -104,8 +104,8 @@ const updateAddress = async (req, res) => {
     try {
         const query = `
             UPDATE direcciones_usuario 
-	        SET latitude=$1, longitude=$2, principal_street=$3, secondary_street=$4, alias=$5, description=$6, user_id=$7
-            WHERE direction_id = $7 
+	        SET latitude=$1, longitude=$2, principal_street=$3, secondary_street=$4, address_alias=$5, reference=$6, user_id=$7
+            WHERE direction_id = $8 
             RETURNING *;
         `;
         const { rows } = await pool.query(query, [
@@ -114,27 +114,27 @@ const updateAddress = async (req, res) => {
             data.calle_principal,
             data.calle_secundaria,
             data.alias,
-            data.descripcion,
+            data.referencia,
             data.usuario_id,
             id
         ]);
 
         if (rows.length === 0) {
             return res.status(404).json({
-                msg: "Direccion no encontrada",
+                msg: "Dirección no encontrada",
                 rta: false
             });
         }
 
         res.status(200).json({
-            msg: "Direccion actualizada con éxito",
+            msg: "Dirección actualizada con éxito",
             data: rows[0],
             rta: true
         });
     } catch (error) {
         console.error(error);
         res.status(500).json({
-            msg: "Error al actualizar la Direccion: "+error.message,
+            msg: "Error al actualizar la dirección: "+error.message,
             rta: false
         });
     }

@@ -7,13 +7,12 @@ const jwt = require("jsonwebtoken");
 /* Obtener el usuario por su id */
 const getUserById = async (req, res) => {
     const { idUsuario } = req.params;
-
     try {
         const query = 'SELECT * FROM usuario WHERE user_id = $1';
-        const { rows } = await pool.query(query, [id]);
+        const { rows } = await pool.query(query, [idUsuario]);
 
         if (rows.length === 0) {
-            return res.status(404).json({
+            return res.status(200).json({
                 msg: 'Usuario no encontrado',
                 rta: false
             });
@@ -28,7 +27,7 @@ const getUserById = async (req, res) => {
     } catch (err) {
         console.error('Error al obtener el usuario:', err);
         res.status(500).json({
-            msg: 'Error del servidor:'+err.message,
+            msg: 'Error del servidor:' + err.message,
             rta: false
         });
     }
@@ -58,7 +57,7 @@ const getUserByCI = async (req, res) => {
     } catch (err) {
         console.error('Error al obtener el usuario:', err);
         res.status(500).json({
-            msg: 'Error del servidor:'+err.message,
+            msg: 'Error del servidor:' + err.message,
             rta: false
         });
     }
@@ -67,6 +66,7 @@ const getUserByCI = async (req, res) => {
 /* Registrar nuevo usuario */
 const register = async (req, res, next) => {
     const data = req.body;
+    console.log(data);
     try {
         const checkQuery = `
             SELECT * FROM usuario 
@@ -86,8 +86,8 @@ const register = async (req, res, next) => {
         const hashedPass = await bcrypt.hash(data.contrasenia, 10);
 
         const { rows } = await pool.query(
-            "INSERT INTO usuario (first_names, last_names, email, ci, notification_token, state, active, password, user_type_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *",
-            [data.nombres, data.apellidos, data.correo, data.cedula, data.token_notific, data.estado, data.activo, hashedPass, data.tipo_usuario]
+            "INSERT INTO usuario (first_names, last_names, email, ci, phone, notification_token, user_state, active, user_password, user_type_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *",
+            [data.nombres, data.apellidos, data.correo, data.cedula, data.celular, data.token_notific, data.estado, data.activo, hashedPass, data.tipo_usuario]
         );
 
         res.status(201).json({
@@ -111,7 +111,7 @@ const login = async (req, res, next) => {
 
     try {
         const result = await pool.query(
-            "SELECT user_id, first_names, last_names, email, ci, notification_token, state, active, password, user_type_id FROM usuario WHERE ci = $1",
+            "SELECT user_id, first_names, last_names, email, ci, phone, notification_token, user_state, active, user_password, user_type_id FROM usuario WHERE ci = $1",
             [cedula]
         );
 
@@ -120,18 +120,18 @@ const login = async (req, res, next) => {
             [result.rows[4]]
         );
         if (result.rows.length === 0) {
-            return res.status(404).json({
-                msg: "Usuario incorrecto",
+            return res.status(200).json({
+                msg: "Cédula incorrecta",
                 rta: false
             });
         }
 
         const user = result.rows[0];
 
-        const match = await bcrypt.compare(contrasenia, user.password);
+        const match = await bcrypt.compare(contrasenia, user.user_password);
 
         if (!match) {
-            return res.status(401).json({
+            return res.status(200).json({
                 msg: "Contraseña incorrecta",
                 rta: false
             });
@@ -144,29 +144,30 @@ const login = async (req, res, next) => {
         );
 
         const usuario = {
-            id_usuario: user.user_id,
-            nombres: user.first_names,
-            apellidos: user.last_names,
-            cedula: user.ci,
-            correo: user.email,
-            tokenNotific: user.notification_token,
-            activo: user.active,
-            estado: user.state,
-            id_tipo_usuario: user.user_type_id,
+            user_id: user.user_id,
+            first_names: user.first_names,
+            last_names: user.last_names,
+            ci: user.ci,
+            phone: user.phone,
+            email: user.email,
+            notification_token: user.notification_token,
+            active: user.active,
+            user_state: user.user_state,
+            user_type_id: user.user_type_id,
             moto: moto.rows[0],
             token,
             ...(moto.rows.length > 0 && { moto: moto.rows[0] })
         };
 
         return res.status(200).json({
-            msg: "Inicio de sesión exitoso!",
-            data:usuario,
+            msg: "¡Inicio de sesión exitoso!",
+            data: usuario,
             rta: true
         });
     } catch (err) {
         console.error(err);
         return res.status(500).json({
-            msg: "Error en el servidor: "+err.message,
+            msg: "Error en el servidor: " + err.message,
             rta: false
         });
     }
@@ -200,7 +201,7 @@ const UpdateUserStatus = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({
-            msg: "Error al actualizar el estado del usuario: "+err.message,
+            msg: "Error al actualizar el estado del usuario: " + err.message,
             rta: false
         });
     }
@@ -213,12 +214,12 @@ const updateUser = async (req, res) => {
     try {
         const query = `
             UPDATE usuario
-	        SET  ci=$1, first_names=$2, last_names=$3, notification_token=$4, email=$5, active=$6, state=$7, user_type_id=$8 
-            WHERE user_id = $9
+	        SET  ci=$1, first_names=$2, last_names=$3, phone=$4, notification_token=$5, email=$6, user_type_id=$7
+            WHERE user_id = $8
             RETURNING *;
         `;
 
-        const { rows } = await pool.query(query, [data.cedula, data.nombres, data.apellidos, data.token_notific, data.correo, data.activo, data.estado, data.id_tipo_usuario, idUsuario]);
+        const { rows } = await pool.query(query, [data.cedula, data.nombres, data.apellidos, data.celular, data.token_notific, data.correo, data.id_tipo_usuario, idUsuario]);
 
         if (rows.length === 0) {
             return res.status(404).json({
@@ -235,7 +236,7 @@ const updateUser = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({
-            msg: "Error al actualizar el usuario: "+err.message,
+            msg: "Error al actualizar el usuario: " + err.message,
             rta: false
         });
     }
@@ -256,7 +257,7 @@ const updateUserContrasenia = async (req, res) => {
     try {
         const query = `
             UPDATE usuario
-	        SET  password=$1 
+	        SET  user_password=$1 
             WHERE user_id = $2
             RETURNING *;
         `;
@@ -271,18 +272,18 @@ const updateUserContrasenia = async (req, res) => {
         }
 
         res.status(200).json({
-            msg: "Contraseña del usuario actualizada con éxito",
+            msg: "Contraseña actualizada con éxito",
             data: rows[0],
             rta: true
         });
     } catch (err) {
         console.error(err);
         res.status(500).json({
-            msg: "Error al actualizar la contraseña: "+err.message,
+            msg: "Error al actualizar la contraseña: " + err.message,
             rta: false
         });
     }
-}; 
+};
 /* Actualizar token de notificaciones */
 const updateUserToken = async (req, res) => {
     const { idUsuario } = req.params;
@@ -319,7 +320,7 @@ const updateUserToken = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({
-            msg: "Error al actualizar el token del usuario: "+err.message,
+            msg: "Error al actualizar el token del usuario: " + err.message,
             rta: false
         });
     }
