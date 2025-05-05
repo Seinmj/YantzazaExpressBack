@@ -1,5 +1,6 @@
 const { response } = require("express");
 const pool = require("../db/db.js");
+const admin = require("../controllers/firebase.js");
 
 const createPedido = async (req, res) => {
     const data = req.body;
@@ -7,19 +8,21 @@ const createPedido = async (req, res) => {
         await pool.query("BEGIN");
         const pedidoQuery = `
             INSERT INTO pedido 
-            (order_date, order_observations, order_finish_date, order_status, dealer_id, order_base_price, order_iva_price, order_iva_value, enterprise_id, user_id) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) 
+            (order_date, order_observations, order_init_date, order_finish_date, order_status, dealer_id, order_base_price, order_iva_price, order_iva_value, order_total, enterprise_id, user_id) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
             RETURNING *;
         `;
         const pedidoValues = [
             data.fecha_pedido,
             data.observacion_pedido,
+            data.fecha_pedido_inicializacion,
             data.fecha_pedido_finalizacion,
             data.estado_pedido,
             data.dealer,
             data.precio_base_pedido,
             data.precio_iva_pedido,
             data.valor_iva_pedido,
+            data.valor_total,
             data.id_local,
             data.id_usuario
         ];
@@ -39,13 +42,21 @@ const createPedido = async (req, res) => {
             const stockCheckResult = await pool.query(stockCheckQuery, [item.idProducto]);
 
             if (stockCheckResult.rows.length === 0) {
-                throw new Error(`Producto con ID ${item.idProducto} no encontrado.`);
+                //throw new Error(`Producto con ID ${item.idProducto} no encontrado.`);
+                return res.status(201).json({
+                    msg: `Producto con ID ${item.idProducto} no encontrado.`,
+                    rta: false
+                });
             }
 
             const stockDisponible = stockCheckResult.rows[0].stock;
 
             if (item.cantidad > stockDisponible) {
-                throw new Error(`Stock insuficiente para el producto con ID ${item.idProducto}.`);
+                // new Error(`Stock insuficiente para el producto con ID ${item.idProducto}.`);
+                return res.status(201).json({
+                    msg: `Stock insuficiente para el producto con ID ${item.idProducto}.`,
+                    rta: false
+                });
             }
 
             const detalleValues = [
@@ -71,33 +82,35 @@ const createPedido = async (req, res) => {
         await pool.query("COMMIT");
 
         res.status(201).json({
-            message: "Pedido creado con éxito",
-            pedido: pedidoResult.rows[0],
-            response: true
+            msg: "Pedido creado con éxito",
+            data: pedidoResult.rows[0],
+            rta: true
         });
     } catch (error) {
         //await client.query("ROLLBACK");
         console.error(error);
         res.status(500).json({
-            message: "Error al crear el pedido",
-            error: error.message,
-            response: false
+            msg: "Error al crear el pedido",
+            data: error.message,
+            rta: false
         });
     }
 };
 const getAllPedidos = async (req, res) => {
-    
+
     try {
         const query = `
             SELECT 
             p.order_id,
             p.order_date,
             p.order_observations,
+            p.order_init_date,
             p.order_finish_date,
             p.order_status,
             p.order_base_price,
             p.order_iva_price,
-            p.order_iva_value, 
+            p.order_iva_value,
+            p.order_total, 
 
             e.enterprise_id,
             e.enterprise_name,
@@ -124,7 +137,7 @@ const getAllPedidos = async (req, res) => {
         const { rows } = await pool.query(query);
 
         if (rows.length === 0) {
-            return res.status(404).json({
+            return res.status(200).json({
                 msg: "No se encontraron pedidos.",
                 rta: false
             });
@@ -133,34 +146,36 @@ const getAllPedidos = async (req, res) => {
             orden_id: row.order_id,
             order_date: row.order_date,
             order_observations: row.order_observations,
+            order_init_date: row.order_init_date,
             order_finish_date: row.order_finish_date,
             order_status: row.order_status,
             order_base_price: row.order_base_price,
             order_iva_price: row.order_iva_price,
             order_iva_value: row.order_iva_value,
-      
+            order_total: row.order_total,
+
             usuario: {
-              user_id: row.user_id,
-              first_names: row.first_names,
-              last_names: row.last_names,
-              email: row.email,
+                user_id: row.user_id,
+                first_names: row.first_names,
+                last_names: row.last_names,
+                email: row.email,
             },
-      
+
             empresa: {
-              enterprise_id: row.enterprise_id,
-              enterprise_name: row.enterprise_name,
-              enterprise_description: row.enterprise_description,
+                enterprise_id: row.enterprise_id,
+                enterprise_name: row.enterprise_name,
+                enterprise_description: row.enterprise_description,
             },
-      
+
             direccion: row.direction_id ? {
-              direction_id: row.direction_id,
-              latitude: row.latitude,
-              longitude: row.longitude,
-              principal_street: row.principal_street,
-              secondary_street: row.secondary_street,
-              alias: row.alias,
+                direction_id: row.direction_id,
+                latitude: row.latitude,
+                longitude: row.longitude,
+                principal_street: row.principal_street,
+                secondary_street: row.secondary_street,
+                alias: row.alias,
             } : null,
-          }));
+        }));
         res.status(200).json({
             msg: "Pedidos obtenidos con éxito",
             data: pedidos,
@@ -169,7 +184,7 @@ const getAllPedidos = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({
-            msg: "Error al obtener los pedidos: "+err.message,
+            msg: "Error al obtener los pedidos: " + err.message,
             rta: false
         });
     }
@@ -183,11 +198,13 @@ const getPedidoById = async (req, res) => {
             p.order_id,
             p.order_date,
             p.order_observations,
+            p.order_init_date,
             p.order_finish_date,
             p.order_status,
             p.order_base_price,
             p.order_iva_price,
-            p.order_iva_value, 
+            p.order_iva_value,
+            p.order_total,
 
             e.enterprise_id,
             e.enterprise_name,
@@ -217,7 +234,7 @@ const getPedidoById = async (req, res) => {
         const { rows } = await pool.query(query, values);
 
         if (rows.length === 0) {
-            return res.status(404).json({
+            return res.status(200).json({
                 msg: "No se encontraron pedidos.",
                 rta: false
             });
@@ -229,32 +246,34 @@ const getPedidoById = async (req, res) => {
             orden_id: row.order_id,
             order_date: row.order_date,
             order_observations: row.order_observations,
+            order_init_date: row.order_init_date,
             order_finish_date: row.order_finish_date,
             order_status: row.order_status,
             order_base_price: row.order_base_price,
             order_iva_price: row.order_iva_price,
             order_iva_value: row.order_iva_value,
+            order_total: row.order_total,
 
             usuario: {
-            user_id: row.user_id,
-            first_names: row.first_names,
-            last_names: row.last_names,
-            email: row.email,
+                user_id: row.user_id,
+                first_names: row.first_names,
+                last_names: row.last_names,
+                email: row.email,
             },
 
             empresa: {
-            enterprise_id: row.enterprise_id,
-            enterprise_name: row.enterprise_name,
-            enterprise_description: row.enterprise_description,
+                enterprise_id: row.enterprise_id,
+                enterprise_name: row.enterprise_name,
+                enterprise_description: row.enterprise_description,
             },
 
             direccion: row.direction_id ? {
-            direction_id: row.direction_id,
-            latitude: row.latitude,
-            longitude: row.longitude,
-            principal_street: row.principal_street,
-            secondary_street: row.secondary_street,
-            alias: row.alias,
+                direction_id: row.direction_id,
+                latitude: row.latitude,
+                longitude: row.longitude,
+                principal_street: row.principal_street,
+                secondary_street: row.secondary_street,
+                alias: row.alias,
             } : null,
         };
 
@@ -266,7 +285,7 @@ const getPedidoById = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({
-            msg: "Error al obtener el pedido: "+err.message,
+            msg: "Error al obtener el pedido: " + err.message,
             rta: false
         });
     }
@@ -279,11 +298,13 @@ const getPedidoByUserState = async (req, res) => {
             p.order_id,
             p.order_date,
             p.order_observations,
+            p.order_init_date,
             p.order_finish_date,
             p.order_status,
             p.order_base_price,
             p.order_iva_price,
-            p.order_iva_value, 
+            p.order_iva_value,
+            p.order_total,
 
             c.user_id AS cliente_id,
             c.first_names AS cliente_nombres,
@@ -295,7 +316,8 @@ const getPedidoByUserState = async (req, res) => {
             dir.longitude,
             dir.principal_street,
             dir.secondary_street,
-            dir.alias, 
+            dir.address_alias,
+            dir.reference, 
 
             e.enterprise_id,
             e.enterprise_name,
@@ -312,7 +334,7 @@ const getPedidoByUserState = async (req, res) => {
             m.moto_year
 
             FROM pedido p 
-            INNER JOIN usuario c ON p.user_id = c.user_id 
+            INNER JOIN usuario c ON p.user_id = c.user_id
             LEFT JOIN direcciones_usuario dir ON dir.user_id = c.user_id 
             INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id 
             LEFT JOIN usuario d ON p.dealer_id = d.user_id 
@@ -325,7 +347,7 @@ const getPedidoByUserState = async (req, res) => {
         const { rows } = await pool.query(query, values);
 
         if (rows.length === 0) {
-            return res.status(404).json({
+            return res.status(200).json({
                 msg: "No se encontraron pedidos.",
                 rta: false
             });
@@ -333,51 +355,56 @@ const getPedidoByUserState = async (req, res) => {
 
         const row = rows[0];
 
-        const pedidos = result.rows.map(row => ({
-            orden_id: row.order_id,
-            order_date: row.order_date,
-            order_observations: row.order_observations,
-            order_finish_date: row.order_finish_date,
-            order_status: row.order_status,
-            order_base_price: row.order_base_price,
-            order_iva_price: row.order_iva_price,
-            order_iva_value: row.order_iva_value,
-      
-            usuario: {
-              user_id: row.cliente_id,
-              first_names: row.cliente_nombres,
-              last_names: row.cliente_apellidos,
-              email: row.cliente_email
-            },
-      
-            direccion: row.direction_id ? {
-              direction_id: row.direction_id,
-              latitude: row.latitude,
-              longitude: row.longitude,
-              principal_street: row.principal_street,
-              secondary_street: row.secondary_street,
-              alias: row.alias
-            } : null,
-      
-            empresa: {
-              enterprise_id: row.enterprise_id,
-              enterprise_name: row.enterprise_name,
-              enterprise_description: row.enterprise_description
-            },
-      
-            dealer: row.dealer_id ? {
-              user_id: row.dealer_id,
-              first_names: row.dealer_nombres,
-              last_names: row.dealer_apellidos,
-              email: row.dealer_email,
-              motocicleta: row.moto_id ? {
-                moto_id: row.moto_id,
-                moto_color: row.moto_color,
-                moto_placa: row.moto_placa,
-                moto_year: row.moto_year
-              } : null
-            } : null
-        }));
+        const pedidos = rows.map((row) => {
+            return ({
+                orden_id: row.order_id,
+                order_date: row.order_date,
+                order_observations: row.order_observations,
+                order_init_date: row.order_init_date,
+                order_finish_date: row.order_finish_date,
+                order_status: row.order_status,
+                order_base_price: row.order_base_price,
+                order_iva_price: row.order_iva_price,
+                order_iva_value: row.order_iva_value,
+                order_total: row.order_total,
+
+                usuario: {
+                    user_id: row.cliente_id,
+                    first_names: row.cliente_nombres,
+                    last_names: row.cliente_apellidos,
+                    email: row.cliente_email
+                },
+
+                direccion: row.direction_id ? {
+                    direction_id: row.direction_id,
+                    latitude: row.latitude,
+                    longitude: row.longitude,
+                    principal_street: row.principal_street,
+                    secondary_street: row.secondary_street,
+                    alias: row.alias,
+                    reference: row.reference
+                } : null,
+
+                empresa: {
+                    enterprise_id: row.enterprise_id,
+                    enterprise_name: row.enterprise_name,
+                    enterprise_description: row.enterprise_description
+                },
+
+                dealer: row.dealer_id ? {
+                    user_id: row.dealer_id,
+                    first_names: row.dealer_nombres,
+                    last_names: row.dealer_apellidos,
+                    email: row.dealer_email,
+                    motocicleta: row.moto_id ? {
+                        moto_id: row.moto_id,
+                        moto_color: row.moto_color,
+                        moto_placa: row.moto_placa,
+                        moto_year: row.moto_year
+                    } : null
+                } : null
+            });
+        });
 
         res.status(200).json({
             msg: "Pedidos obtenidos con éxito",
@@ -387,7 +414,7 @@ const getPedidoByUserState = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({
-            msg: "Error al obtener los pedidos: "+err.message,
+            msg: "Error al obtener los pedidos: " + err.message,
             rta: false
         });
     }
@@ -400,11 +427,13 @@ const getPedidoByMotoState = async (req, res) => {
         p.order_id,
         p.order_date,
         p.order_observations,
+        p.order_init_date,
         p.order_finish_date,
         p.order_status,
         p.order_base_price,
         p.order_iva_price,
-        p.order_iva_value, 
+        p.order_iva_value,
+        p.order_total,
 
         c.user_id AS cliente_id,
         c.first_names AS cliente_nombres,
@@ -446,57 +475,60 @@ const getPedidoByMotoState = async (req, res) => {
         const { rows } = await pool.query(query, values);
 
         if (rows.length === 0) {
-            return res.status(404).json({
+            return res.status(200).json({
                 msg: "No se encontraron pedidos.",
+                data: [],
                 rta: false
             });
         }
 
         const row = rows[0];
 
-        const pedidos = result.rows.map(row => ({
+        const pedidos = rows.map(row => ({
             orden_id: row.order_id,
             order_date: row.order_date,
             order_observations: row.order_observations,
+            order_init_date: row.order_init_date,
             order_finish_date: row.order_finish_date,
             order_status: row.order_status,
             order_base_price: row.order_base_price,
             order_iva_price: row.order_iva_price,
             order_iva_value: row.order_iva_value,
-      
+            order_total: row.order_total,
+
             usuario: {
-              user_id: row.cliente_id,
-              first_names: row.cliente_nombres,
-              last_names: row.cliente_apellidos,
-              email: row.cliente_email
+                user_id: row.cliente_id,
+                first_names: row.cliente_nombres,
+                last_names: row.cliente_apellidos,
+                email: row.cliente_email
             },
-      
+
             direccion: row.direction_id ? {
-              direction_id: row.direction_id,
-              latitude: row.latitude,
-              longitude: row.longitude,
-              principal_street: row.principal_street,
-              secondary_street: row.secondary_street,
-              alias: row.alias
+                direction_id: row.direction_id,
+                latitude: row.latitude,
+                longitude: row.longitude,
+                principal_street: row.principal_street,
+                secondary_street: row.secondary_street,
+                alias: row.alias
             } : null,
-      
+
             empresa: {
-              enterprise_id: row.enterprise_id,
-              enterprise_name: row.enterprise_name,
-              enterprise_description: row.enterprise_description
+                enterprise_id: row.enterprise_id,
+                enterprise_name: row.enterprise_name,
+                enterprise_description: row.enterprise_description
             },
-      
+
             dealer: row.dealer_id ? {
-              user_id: row.dealer_id,
-              first_names: row.dealer_nombres,
-              last_names: row.dealer_apellidos,
-              email: row.dealer_email,
-              motocicleta: row.moto_id ? {
-                moto_id: row.moto_id,
-                moto_color: row.moto_color,
-                moto_placa: row.moto_placa,
-                moto_year: row.moto_year
-              } : null
+                user_id: row.dealer_id,
+                first_names: row.dealer_nombres,
+                last_names: row.dealer_apellidos,
+                email: row.dealer_email,
+                motocicleta: row.moto_id ? {
+                    moto_id: row.moto_id,
+                    moto_color: row.moto_color,
+                    moto_placa: row.moto_placa,
+                    moto_year: row.moto_year
+                } : null
             } : null
         }));
 
@@ -508,7 +540,7 @@ const getPedidoByMotoState = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({
-            msg: "Error al obtener los pedidos: "+err.message,
+            msg: "Error al obtener los pedidos: " + err.message,
             rta: false
         });
     }
@@ -521,11 +553,13 @@ const getPedidoByMoto = async (req, res) => {
         p.order_id,
         p.order_date,
         p.order_observations,
+        p.order_init_date,
         p.order_finish_date,
         p.order_status,
         p.order_base_price,
         p.order_iva_price,
-        p.order_iva_value, 
+        p.order_iva_value,
+        p.order_total, 
 
         c.user_id AS cliente_id,
         c.first_names AS cliente_nombres,
@@ -567,7 +601,7 @@ const getPedidoByMoto = async (req, res) => {
         const { rows } = await pool.query(query, values);
 
         if (rows.length === 0) {
-            return res.status(404).json({
+            return res.status(200).json({
                 msg: "No se encontraron pedidos.",
                 rta: false
             });
@@ -575,49 +609,51 @@ const getPedidoByMoto = async (req, res) => {
 
         const row = rows[0];
 
-        const pedidos = result.rows.map(row => ({
+        const pedidos = rows.map(row => ({
             orden_id: row.order_id,
             order_date: row.order_date,
             order_observations: row.order_observations,
+            order_init_date: row.order_init_date,
             order_finish_date: row.order_finish_date,
             order_status: row.order_status,
             order_base_price: row.order_base_price,
             order_iva_price: row.order_iva_price,
             order_iva_value: row.order_iva_value,
-      
+            order_total: row.order_total,
+
             usuario: {
-              user_id: row.cliente_id,
-              first_names: row.cliente_nombres,
-              last_names: row.cliente_apellidos,
-              email: row.cliente_email
+                user_id: row.cliente_id,
+                first_names: row.cliente_nombres,
+                last_names: row.cliente_apellidos,
+                email: row.cliente_email
             },
-      
+
             direccion: row.direction_id ? {
-              direction_id: row.direction_id,
-              latitude: row.latitude,
-              longitude: row.longitude,
-              principal_street: row.principal_street,
-              secondary_street: row.secondary_street,
-              alias: row.alias
+                direction_id: row.direction_id,
+                latitude: row.latitude,
+                longitude: row.longitude,
+                principal_street: row.principal_street,
+                secondary_street: row.secondary_street,
+                alias: row.alias
             } : null,
-      
+
             empresa: {
-              enterprise_id: row.enterprise_id,
-              enterprise_name: row.enterprise_name,
-              enterprise_description: row.enterprise_description
+                enterprise_id: row.enterprise_id,
+                enterprise_name: row.enterprise_name,
+                enterprise_description: row.enterprise_description
             },
-      
+
             dealer: row.dealer_id ? {
-              user_id: row.dealer_id,
-              first_names: row.dealer_nombres,
-              last_names: row.dealer_apellidos,
-              email: row.dealer_email,
-              motocicleta: row.moto_id ? {
-                moto_id: row.moto_id,
-                moto_color: row.moto_color,
-                moto_placa: row.moto_placa,
-                moto_year: row.moto_year
-              } : null
+                user_id: row.dealer_id,
+                first_names: row.dealer_nombres,
+                last_names: row.dealer_apellidos,
+                email: row.dealer_email,
+                motocicleta: row.moto_id ? {
+                    moto_id: row.moto_id,
+                    moto_color: row.moto_color,
+                    moto_placa: row.moto_placa,
+                    moto_year: row.moto_year
+                } : null
             } : null
         }));
 
@@ -629,7 +665,7 @@ const getPedidoByMoto = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({
-            msg: "Error al obtener los pedidos: "+err.message,
+            msg: "Error al obtener los pedidos: " + err.message,
             rta: false
         });
     }
@@ -648,15 +684,28 @@ const updateEstadoPedido = async (req, res) => {
 
         const { rows } = await pool.query(query, [data.estado, idPedido]);
 
+        // Cuando se actualiza el estado del pedido, enviar notificacion al cliente con ayuda de firebase messaging
+        const message = {
+            token: data.tokenCliente,
+            notification: {
+                title: "Estado del pedido actualizado",
+                body: `El estado de su pedido #${idPedido} ha cambiado a ACEPTADO.`
+            },
+            data: { type: 'chat', order_id: idPedido }
+        };
+
+        await admin.messaging().send(message);
+
         res.status(200).json({
             msg: "Estado del pedido actualizado con éxito",
             data: rows[0],
             rta: true
         });
+
     } catch (err) {
         console.error(err);
         res.status(500).json({
-            msg: "Error al actualizar el pedido: "+err.message,
+            msg: "Error al actualizar el pedido: " + err.message,
             rta: false
         });
     }
@@ -673,7 +722,30 @@ const updateEstadoMotoPedido = async (req, res) => {
             RETURNING *;
         `;
 
-        const { rows } = await pool.query(query, [data.estado,data.dealer, idPedido]);
+        const { rows } = await pool.query(query, [data.estado, data.dealer, idPedido]);
+
+        // Cuando se actualiza el estado del pedido, enviar notificacion al motorizado y al cliente con ayuda de firebase messaging
+        const dealerMessage = {
+            token: data.tokenCliente,
+            notification: {
+                title: "Nuevo pedido asignado",
+                body: `Se le ha asignado un nuevo pedido #${idPedido}.`
+            },
+            data: { type: 'chat', order_id: idPedido }
+        };
+
+        await admin.messaging().send(dealerMessage);
+        const clientMessage = {
+            token: data.tokenCliente,
+            notification: {
+                title: "Estado del pedido actualizado",
+                body: `El estado de su pedido #${idPedido} ha cambiado a EN CAMINO`
+            },
+            data: { type: 'chat', order_id: idPedido }
+        };
+
+        await admin.messaging().send(clientMessage);
+
 
         res.status(200).json({
             msg: "Estado y asignación del pedido actualizado con éxito",
@@ -683,7 +755,7 @@ const updateEstadoMotoPedido = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({
-            msg: "Error al actualizar el estado y la asignación del pedido: "+err.message,
+            msg: "Error al actualizar el estado y la asignación del pedido: " + err.message,
             rta: false
         });
     }
@@ -711,7 +783,7 @@ const updateEstadoFechaPedido = async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({
-            msg: "Error al actualizar el estado y la fecha del pedido: "+err.message,
+            msg: "Error al actualizar el estado y la fecha del pedido: " + err.message,
             rta: false
         });
     }

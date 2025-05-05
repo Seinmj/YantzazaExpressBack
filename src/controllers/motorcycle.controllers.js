@@ -3,10 +3,10 @@ const pool = require("../db/db.js");
 
 const createMoto = async (req, res) => {
     const data = req.body;
-    const query = "INSERT INTO motocicleta(moto_color, moto_placa, moto_year, user_id) VALUES ($1, $2, $3, $4) RETURNING *;";
+    const query = "INSERT INTO motocicleta(moto_color, moto_model, moto_placa, moto_year, user_id) VALUES ($1, $2, $3, $4, $5) RETURNING *;";
     try {
         const { rows } = await pool.query(query,
-            [data.moto_color, data.moto_placa, data.moto_anio, data.usuario_id]
+            [data.moto_color, data.moto_model, data.moto_placa, data.moto_anio, data.usuario_id]
         );
         res.status(200).json({
             rta: true,
@@ -17,10 +17,38 @@ const createMoto = async (req, res) => {
         console.error(error);
         res.status(500).json({
             rta: false,
-            msg: "Error al crear la motocicleta: "+error.message
+            msg: "Error al crear la motocicleta: " + error.message
         });
     }
 };
+
+/* Obtener motos por user_id */
+const getMotosByUserId = async (req, res) => {
+    const { user_id } = req.params;
+    try {
+        const query = "SELECT * FROM motocicleta WHERE user_id = $1;";
+        const { rows } = await pool.query(query, [user_id]);
+
+        if (rows.length === 0) {
+            return res.status(200).json({
+                msg: "No hay motocicletas registradas para este usuario",
+                rta: false
+            });
+        }
+        res.status(200).json({
+            msg: "Lista de motocicletas obtenida con éxito",
+            data: rows[0],
+            rta: true
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            rta: false,
+            msg: "Error al obtener las motocicletas: " + error.message
+        });
+    }
+};
+
 const getAllMotos = async (req, res) => {
     try {
         const query = `SELECT * FROM motocicleta;`;
@@ -41,7 +69,7 @@ const getAllMotos = async (req, res) => {
         console.error(error);
         res.status(500).json({
             rta: false,
-            msg: "Error al obtener las motocicletas: "+error.message
+            msg: "Error al obtener las motocicletas: " + error.message
         });
     }
 };
@@ -49,4 +77,5 @@ const getAllMotos = async (req, res) => {
 module.exports = {
     createMoto,
     getAllMotos,
+    getMotosByUserId
 };

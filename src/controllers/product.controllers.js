@@ -139,9 +139,38 @@ const deleteProduct = async (req, res) => {
     }
 };
 
+const getProductById = async (req, res) => {
+    const id = req.params.idProducto;
+
+    try {
+        const query = "SELECT * FROM producto WHERE product_id = $1;";
+        const { rows } = await pool.query(query, [id]);
+
+        if (rows.length === 0) {
+            return res.status(200).json({
+                msg: "Producto no encontrado",
+                rta: false
+            });
+        }
+
+        res.status(200).json({
+            msg: "Producto encontrado",
+            data: rows[0],
+            rta: true
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            msg: "Error al obtener el producto: " + error.message,
+            rta: false
+        });
+    }
+}
+
 module.exports = {
     createProduct,
     getProductCategory,
     updateProduct,
-    deleteProduct
+    deleteProduct,
+    getProductById
 };
