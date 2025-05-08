@@ -14,7 +14,7 @@ const getEnterprise = async (req, res) => {
         console.error(err);
         res.status(500).json({
             rta: false,
-            msg: "Error al obtener las empresas: "+ err.message
+            msg: "Error al obtener las empresas: " + err.message
         });
     }
 };
@@ -24,6 +24,14 @@ const getEnterpriseById = async (req, res) => {
     const { empresa_id } = req.params;
     try {
         const { rows } = await pool.query('SELECT * FROM local_empresa WHERE enterprise_id = $1', [empresa_id]);
+
+        if (rows.length === 0) {
+            return res.status(200).json({
+                rta: false,
+                msg: "Empresa no encontrada"
+            });
+        }
+
         res.status(200).json({
             rta: true,
             msg: "Empresa obtenida con éxito",
@@ -33,11 +41,11 @@ const getEnterpriseById = async (req, res) => {
         console.error(err);
         res.status(500).json({
             rta: false,
-            msg: "Error al obtener la empresa: "+ err.message
+            msg: "Error al obtener la empresa: " + err.message
         });
     }
 };
- /* metodo para Crear la empresa */
+/* metodo para Crear la empresa */
 const createEnterprise = async (req, res) => {
     const {
         enterprise_name,
@@ -77,13 +85,13 @@ const createEnterprise = async (req, res) => {
         console.error(err);
         res.status(500).json({
             rta: false,
-            msg: "Error al crear la empresa: "+ err.message
+            msg: "Error al crear la empresa: " + err.message
         });
     }
 };
 /* Metodo para actualizar la empresa */
 const updateEnterprise = async (req, res) => {
-    const {idEmpresa} = req.params;
+    const { idEmpresa } = req.params;
     const {
         enterprise_name,
         enterprise_description,
@@ -122,7 +130,7 @@ const updateEnterprise = async (req, res) => {
             longitude, principal_street, secondary_street, enterprise_img,
             initial_control_date, final_control_date, active, user_id, master_category_id, idEmpresa
         ]);
-        if (rowCount === 0) return res.status(404).json({rta: false, msg: 'Empresa no encontrada' });
+        if (rows === 0) return res.status(200).json({ rta: false, msg: 'Empresa no encontrada' });
         res.status(200).json({
             rta: true,
             msg: "Empresa actualizada",
@@ -132,7 +140,7 @@ const updateEnterprise = async (req, res) => {
         console.error(err);
         res.status(500).json({
             rta: false,
-            msg: "Error al actualizar la empresa: "+ err.message
+            msg: "Error al actualizar la empresa: " + err.message
         });
     }
 };
@@ -143,7 +151,7 @@ const deleteEnterprise = async (req, res) => {
         const { rowCount } = await pool.query('DELETE FROM local_empresa WHERE enterprise_id = $1', [id]);
         if (rowCount === 0) return res.status(404).json({ msg: 'Empresa no encontrada' });
 
-        res.json({ 
+        res.json({
             msg: 'Empresa eliminada correctamente',
             rta: true,
         });
@@ -151,7 +159,7 @@ const deleteEnterprise = async (req, res) => {
         console.error(err);
         res.status(500).json({
             rta: false,
-            msg: "Error al eliminar la empresa: "+ err.message
+            msg: "Error al eliminar la empresa: " + err.message
         });
     }
 };
@@ -160,7 +168,7 @@ const deleteEnterprise = async (req, res) => {
 const getEnterpriseCategory = async (req, res) => {
     const { categoria_id } = req.params;
     try {
-        const { rows } = await pool.query('SELECT * FROM local_empresa WHERE master_category_id=$1',[categoria_id]);
+        const { rows } = await pool.query('SELECT * FROM local_empresa WHERE master_category_id=$1', [categoria_id]);
         res.status(200).json({
             rta: true,
             msg: "Lista de empresas obtenidas con éxito",
@@ -170,7 +178,7 @@ const getEnterpriseCategory = async (req, res) => {
         console.error(err);
         res.status(500).json({
             rta: false,
-            msg: "Error al obtener las empresas: "+ err.message
+            msg: "Error al obtener las empresas: " + err.message
         });
     }
 };

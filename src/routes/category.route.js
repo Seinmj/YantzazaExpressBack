@@ -5,6 +5,7 @@ const { createCategory, createCategoryMaster, getCategory, getCategoryMaster, up
 const router = express.Router();
 
 router.get("/movil/categoriasMaster/", getCategoryMaster);
+router.get("/web/categoriasMaster/", getCategoryMaster);
 router.post("/web/createCategoriaMaster", createCategoryMaster);
 router.get("/movil/categorias/:empresa_id", getCategory);
 router.post("/web/createCategoria", createCategory);

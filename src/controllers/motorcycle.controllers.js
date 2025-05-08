@@ -74,6 +74,29 @@ const getAllMotos = async (req, res) => {
     }
 };
 
+/* Metodo para actualizar la informacion del vehiculo del repartidor */
+const updateMoto = async (req, res) => {
+    const { id } = req.params;
+    const data = req.body;
+    const query = "UPDATE motocicleta SET moto_color = $1, moto_model = $2, moto_placa = $3, moto_year = $4 WHERE id_moto = $5 RETURNING *;";
+    try {
+        const { rows } = await pool.query(query,
+            [data.moto_color, data.moto_model, data.moto_placa, data.moto_anio, id]
+        );
+        res.status(200).json({
+            rta: true,
+            msg: "Motocicleta actualizada",
+            data: rows[0]
+        })
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            rta: false,
+            msg: "Error al actualizar la motocicleta: " + error.message
+        });
+    }
+};
+
 module.exports = {
     createMoto,
     getAllMotos,

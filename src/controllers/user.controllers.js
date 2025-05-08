@@ -4,6 +4,35 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
 
+/* Obtener todos los usuarios por su tipo */
+const getAllUsersByType = async (req, res) => {
+    const { userType } = req.params;
+    try {
+        const query = `
+        SELECT * FROM usuario
+        WHERE user_type_id = $1
+        `;
+        const { rows } = await pool.query(query, [userType]);
+        if (rows.length === 0) {
+            return res.status(200).json({
+                msg: 'No se encontraron usuarios',
+                rta: false
+            });
+        }
+        res.status(200).json({
+            msg: 'Lista de usuarios',
+            data: rows,
+            rta: true
+        });
+    } catch (error) {
+        console.error('Error al obtener los usuarios:', error);
+        res.status(500).json({
+            msg: 'Error del servidor:' + error.message,
+            rta: false
+        });
+    }
+}
+
 /* Obtener el usuario por su id */
 const getUserById = async (req, res) => {
     const { idUsuario } = req.params;
@@ -63,6 +92,59 @@ const getUserByCI = async (req, res) => {
     }
 };
 
+/* Obtener unicamente los usuarios que tienen user_type_id = 4 */
+const getDealers = async (req, res) => {
+    try {
+        // Consulta para obtener los usuarios con user_type_id = 4
+        const queryUsuarios = `
+            SELECT usuario.*, motocicleta.moto_id, motocicleta.moto_color, motocicleta.moto_model, motocicleta.moto_placa, motocicleta.moto_year
+            FROM usuario
+            LEFT JOIN motocicleta ON usuario.user_id = motocicleta.user_id
+            WHERE user_type_id = $1
+        `;
+        const { rows } = await pool.query(queryUsuarios, [4]);
+
+        if (rows.length === 0) {
+            return res.status(200).json({
+                msg: 'No se encontraron usuarios con motocicletas',
+                rta: false
+            });
+        }
+
+        // Formatear la respuesta para incluir las motocicletas
+        const dealers = rows.map(row => ({
+            user_id: row.user_id,
+            first_names: row.first_names,
+            last_names: row.last_names,
+            email: row.email,
+            phone: row.phone,
+            ci: row.ci,
+            active: row.active,
+            user_state: row.user_state,
+            moto: {
+                moto_id: row.moto_id,
+                moto_color: row.moto_color,
+                moto_model: row.moto_model,
+                moto_placa: row.moto_placa,
+                moto_year: row.moto_year
+            }
+        }));
+
+        res.status(200).json({
+            msg: 'Usuarios con motocicletas encontrados',
+            data: dealers,
+            rta: true
+        });
+
+    } catch (err) {
+        console.error('Error al obtener los usuarios con motocicletas:', err);
+        res.status(500).json({
+            msg: 'Error del servidor: ' + err.message,
+            rta: false
+        });
+    }
+};
+
 /* Registrar nuevo usuario */
 const register = async (req, res, next) => {
     const data = req.body;
@@ -76,8 +158,8 @@ const register = async (req, res, next) => {
 
         if (checkResult.rows.length > 0) {
 
-            return res.status(400).json({
-                msg: "El correo o la cédula ya están registrados",
+            return res.status(200).json({
+                msg: "La cédula ya se encuentra registrada",
                 err: "Duplicated fields",
                 rta: false
             });
@@ -99,6 +181,58 @@ const register = async (req, res, next) => {
         console.error(err);
         res.status(500).json({
             msg: "Error al registrar el usuario ",
+            err: err.message,
+            rta: false
+        });
+    }
+}
+
+/* Registrar un motorizado */
+const registerDealer = async (req, res) => {
+    const data = req.body;
+    console.log(data);
+    try {
+        const checkQuery = `
+            SELECT * FROM usuario 
+            WHERE ci = $1
+        `;
+        const checkResult = await pool.query(checkQuery, [data.cedula]);
+
+        if (checkResult.rows.length > 0) {
+
+            return res.status(200).json({
+                msg: "El correo o la cédula ya están registrados",
+                rta: false
+            });
+        }
+
+        const hashedPass = await bcrypt.hash(data.contrasenia, 10);
+
+        const { rows } = await pool.query(
+            "INSERT INTO usuario (first_names, last_names, email, ci, phone, notification_token, user_state, active, user_password, user_type_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *",
+            [data.nombres, data.apellidos, data.correo, data.cedula, data.celular, data.token_notific, data.estado, data.activo, hashedPass, data.tipo_usuario]
+        );
+
+        /* Una vez registrado el usuario registramos los datos de la moto */
+        const { rows: dealer } = await pool.query(
+            "INSERT INTO motocicleta(moto_color, moto_model, moto_placa, moto_year, user_id) VALUES ($1, $2, $3, $4, $5) RETURNING *;",
+            [data.moto_color, data.moto_model, data.moto_placa, data.moto_anio, rows[0].user_id]
+        );
+
+        const newData = {
+            usuario: rows[0],
+            repartidor: dealer[0]
+        }
+
+        res.status(201).json({
+            msg: "Rapartidor registrado con éxito",
+            data: newData,
+            rta: true
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            msg: "Error al registrar el repartidor ",
             err: err.message,
             rta: false
         });
@@ -214,12 +348,12 @@ const updateUser = async (req, res) => {
     try {
         const query = `
             UPDATE usuario
-	        SET  ci=$1, first_names=$2, last_names=$3, phone=$4, notification_token=$5, email=$6, user_type_id=$7
-            WHERE user_id = $8
+	        SET  ci=$1, first_names=$2, last_names=$3, phone=$4, notification_token=$5, email=$6, user_type_id=$7, active=$8
+            WHERE user_id = $9
             RETURNING *;
         `;
 
-        const { rows } = await pool.query(query, [data.cedula, data.nombres, data.apellidos, data.celular, data.token_notific, data.correo, data.id_tipo_usuario, idUsuario]);
+        const { rows } = await pool.query(query, [data.cedula, data.nombres, data.apellidos, data.celular, data.token_notific, data.correo, data.tipo_usuario, data.activo, idUsuario]);
 
         if (rows.length === 0) {
             return res.status(404).json({
@@ -237,6 +371,65 @@ const updateUser = async (req, res) => {
         console.error(err);
         res.status(500).json({
             msg: "Error al actualizar el usuario: " + err.message,
+            rta: false
+        });
+    }
+};
+
+/* Metodo para actualizar la informacion del repartidor y su vehiculo */
+const updateDealer = async (req, res) => {
+    const { idUsuario } = req.params;
+    const data = req.body;
+    try {
+        /* Para evitar sobreescribir el token de messaging de firebase buscamos primero esta variable en la tabla usuario */
+        const queryToken = `
+            SELECT notification_token FROM usuario
+            WHERE user_id = $1;
+        `;
+        const { rows: token } = await pool.query(queryToken, [idUsuario]);
+
+        const tokenNotific = token[0].notification_token;
+
+        const query = `
+            UPDATE usuario
+            SET  ci=$1, first_names=$2, last_names=$3, phone=$4, notification_token=$5, email=$6, active=$7
+            WHERE user_id = $8
+            RETURNING *;
+        `;
+
+        const { rows } = await pool.query(query, [data.cedula, data.nombres, data.apellidos, data.celular, tokenNotific, data.correo, data.active, idUsuario]);
+
+        if (rows.length === 0) {
+            return res.status(200).json({
+                msg: `No se encontró un usuario con el ID ${idUsuario}`,
+                rta: false
+            });
+        }
+
+        /* Actualizar informacion del vehiculo */
+        const queryMoto = `
+            UPDATE motocicleta
+            SET  moto_color=$1, moto_model=$2, moto_placa=$3, moto_year=$4
+            WHERE user_id = $5
+            RETURNING *;
+        `;
+        const { rows: moto } = await pool.query(queryMoto, [data.moto_color, data.moto_model, data.moto_placa, data.moto_anio, idUsuario]);
+        if (moto.length === 0) {
+            return res.status(200).json({
+                msg: `No se encontró un vehiculo con el ID ${idUsuario}`,
+                rta: false
+            });
+        }
+
+        res.status(200).json({
+            msg: "Motorizado actualizado con éxito",
+            data: rows[0],
+            rta: true
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            msg: "Error al actualizar el motorizado: " + err.message,
             rta: false
         });
     }
@@ -327,5 +520,5 @@ const updateUserToken = async (req, res) => {
 };
 
 module.exports = {
-    register, login, UpdateUserStatus, updateUser, updateUserContrasenia, updateUserToken, getUserByCI, getUserById
+    register, login, UpdateUserStatus, updateUser, updateUserContrasenia, updateUserToken, getUserByCI, getUserById, registerDealer, getDealers, updateDealer, getAllUsersByType
 }
