@@ -8,8 +8,8 @@ const createPedido = async (req, res) => {
         await pool.query("BEGIN");
         const pedidoQuery = `
             INSERT INTO pedido 
-            (order_date, order_observations, order_init_date, order_finish_date, order_status, dealer_id, order_base_price, order_iva_price, order_iva_value, order_total, enterprise_id, user_id) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
+            (order_date, order_observations, order_init_date, order_finish_date, order_status, dealer_id, order_base_price, order_iva_price, order_iva_value, order_total, enterprise_id, user_id, direction_id) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
             RETURNING *;
         `;
         const pedidoValues = [
@@ -24,7 +24,8 @@ const createPedido = async (req, res) => {
             data.valor_iva_pedido,
             data.valor_total,
             data.id_local,
-            data.id_usuario
+            data.id_usuario,
+            data.id_direccion
         ];
 
         const pedidoResult = await pool.query(pedidoQuery, pedidoValues);
@@ -97,41 +98,53 @@ const createPedido = async (req, res) => {
     }
 };
 const getAllPedidos = async (req, res) => {
-
     try {
         const query = `
             SELECT 
-            p.order_id,
-            p.order_date,
-            p.order_observations,
-            p.order_init_date,
-            p.order_finish_date,
-            p.order_status,
-            p.order_base_price,
-            p.order_iva_price,
-            p.order_iva_value,
-            p.order_total, 
+                p.order_id,
+                p.order_date,
+                p.order_observations,
+                p.order_finish_date,
+                p.order_status,
+                p.order_base_price,
+                p.order_iva_price,
+                p.order_iva_value,
+                (p.order_base_price + p.order_iva_value) AS order_total,
 
-            e.enterprise_id,
-            e.enterprise_name,
-            e.enterprise_description, 
+                e.enterprise_id,
+                e.enterprise_name,
+                e.enterprise_description,
 
-            u.user_id,
-            u.first_names,
-            u.last_names,
-            u.email, 
+                u.user_id,
+                u.first_names,
+                u.last_names,
+                u.email,
 
-            d.direction_id,
-            d.latitude,
-            d.longitude,
-            d.principal_street,
-            d.secondary_street,
-            d.alias 
+                d.direction_id,
+                d.latitude,
+                d.longitude,
+                d.principal_street,
+                d.secondary_street,
+                d.alias,
+
+                dp.order_detail_id,
+                dp.order_detail_prod_cant,
+                dp.order_detail_base_price,
+                dp.order_detail_iva_price,
+                dp.order_detail_iva_value,
+
+                pr.product_id,
+                pr.product_name,
+                pr.product_description,
+                pr.product_img
 
             FROM pedido p 
             INNER JOIN usuario u ON p.user_id = u.user_id 
             INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id 
-            LEFT JOIN direcciones_usuario d ON d.user_id = u.user_id 
+            LEFT JOIN direcciones_usuario d ON p.direction_id = d.direction_id 
+            LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id 
+            LEFT JOIN producto pr ON pr.product_id = dp.product_id 
+            ORDER BY p.order_date DESC
         `;
 
         const { rows } = await pool.query(query);
@@ -142,43 +155,68 @@ const getAllPedidos = async (req, res) => {
                 rta: false
             });
         }
-        const pedidos = result.rows.map(row => ({
-            orden_id: row.order_id,
-            order_date: row.order_date,
-            order_observations: row.order_observations,
-            order_init_date: row.order_init_date,
-            order_finish_date: row.order_finish_date,
-            order_status: row.order_status,
-            order_base_price: row.order_base_price,
-            order_iva_price: row.order_iva_price,
-            order_iva_value: row.order_iva_value,
-            order_total: row.order_total,
 
-            usuario: {
-                user_id: row.user_id,
-                first_names: row.first_names,
-                last_names: row.last_names,
-                email: row.email,
-            },
+        const pedidosMap = new Map();
 
-            empresa: {
-                enterprise_id: row.enterprise_id,
-                enterprise_name: row.enterprise_name,
-                enterprise_description: row.enterprise_description,
-            },
+        for (const row of rows) {
+            if (!pedidosMap.has(row.order_id)) {
+                pedidosMap.set(row.order_id, {
+                    orden_id: row.order_id,
+                    order_date: row.order_date,
+                    order_observations: row.order_observations,
+                    order_finish_date: row.order_finish_date,
+                    order_status: row.order_status,
+                    order_base_price: row.order_base_price,
+                    order_iva_price: row.order_iva_price,
+                    order_iva_value: row.order_iva_value,
+                    order_total: row.order_total,
 
-            direccion: row.direction_id ? {
-                direction_id: row.direction_id,
-                latitude: row.latitude,
-                longitude: row.longitude,
-                principal_street: row.principal_street,
-                secondary_street: row.secondary_street,
-                alias: row.alias,
-            } : null,
-        }));
+                    usuario: {
+                        user_id: row.user_id,
+                        first_names: row.first_names,
+                        last_names: row.last_names,
+                        email: row.email
+                    },
+
+                    empresa: {
+                        enterprise_id: row.enterprise_id,
+                        enterprise_name: row.enterprise_name,
+                        enterprise_description: row.enterprise_description
+                    },
+
+                    direccion: row.direction_id ? {
+                        direction_id: row.direction_id,
+                        latitude: row.latitude,
+                        longitude: row.longitude,
+                        principal_street: row.principal_street,
+                        secondary_street: row.secondary_street,
+                        alias: row.alias
+                    } : null,
+
+                    productos: []
+                });
+            }
+
+            if (row.product_id) {
+                pedidosMap.get(row.order_id).productos.push({
+                    order_detail_id: row.order_detail_id,
+                    cantidad: row.order_detail_prod_cant,
+                    base_price: row.order_detail_base_price,
+                    iva_price: row.order_detail_iva_price,
+                    iva_value: row.order_detail_iva_value,
+                    producto: {
+                        product_id: row.product_id,
+                        product_name: row.product_name,
+                        product_description: row.product_description,
+                        product_img: row.product_img
+                    }
+                });
+            }
+        }
+
         res.status(200).json({
             msg: "Pedidos obtenidos con éxito",
-            data: pedidos,
+            data: Array.from(pedidosMap.values()),
             rta: true
         });
     } catch (err) {
@@ -195,86 +233,113 @@ const getPedidoById = async (req, res) => {
     try {
         const query = `
             SELECT 
-            p.order_id,
-            p.order_date,
-            p.order_observations,
-            p.order_init_date,
-            p.order_finish_date,
-            p.order_status,
-            p.order_base_price,
-            p.order_iva_price,
-            p.order_iva_value,
-            p.order_total,
+                p.order_id,
+                p.order_date,
+                p.order_observations,
+                p.order_init_date,
+                p.order_finish_date,
+                p.order_status,
+                p.order_base_price,
+                p.order_iva_price,
+                p.order_iva_value,
+                (p.order_base_price + p.order_iva_value) AS order_total,
 
-            e.enterprise_id,
-            e.enterprise_name,
-            e.enterprise_description, 
+                e.enterprise_id,
+                e.enterprise_name,
+                e.enterprise_description, 
 
-            u.user_id, 
-            u.first_names,
-            u.last_names,
-            u.email,
+                u.user_id, 
+                u.first_names,
+                u.last_names,
+                u.email,
 
-            d.direction_id,
-            d.latitude,
-            d.longitude,
-            d.principal_street,
-            d.secondary_street,
-            d.alias 
+                d.direction_id,
+                d.latitude,
+                d.longitude,
+                d.principal_street,
+                d.secondary_street,
+                d.alias,
 
-            FROM pedido p 
-            INNER JOIN usuario u ON p.user_id = u.user_id 
-            INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id 
-            LEFT JOIN direcciones_usuario d ON d.user_id = u.user_id 
+                dp.order_detail_id,
+                dp.order_detail_prod_cant,
+                dp.order_detail_base_price,
+                dp.order_detail_iva_price,
+                dp.order_detail_iva_value,
+
+                pr.product_id,
+                pr.product_name,
+                pr.product_description,
+                pr.product_img
+
+            FROM pedido p
+            INNER JOIN usuario u ON p.user_id = u.user_id
+            INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id
+            LEFT JOIN direcciones_usuario d ON p.direction_id = d.direction_id 
+            LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id
+            LEFT JOIN producto pr ON pr.product_id = dp.product_id
             WHERE p.order_id = $1
         `;
 
-        const values = [idPedido];
-
-        const { rows } = await pool.query(query, values);
+        const { rows } = await pool.query(query, [idPedido]);
 
         if (rows.length === 0) {
             return res.status(200).json({
-                msg: "No se encontraron pedidos.",
+                msg: "No se encontró el pedido.",
                 rta: false
             });
         }
 
-        const row = rows[0];
+        const base = rows[0];
 
         const pedido = {
-            orden_id: row.order_id,
-            order_date: row.order_date,
-            order_observations: row.order_observations,
-            order_init_date: row.order_init_date,
-            order_finish_date: row.order_finish_date,
-            order_status: row.order_status,
-            order_base_price: row.order_base_price,
-            order_iva_price: row.order_iva_price,
-            order_iva_value: row.order_iva_value,
-            order_total: row.order_total,
+            orden_id: base.order_id,
+            order_date: base.order_date,
+            order_observations: base.order_observations,
+            order_init_date: base.order_init_date,
+            order_finish_date: base.order_finish_date,
+            order_status: base.order_status,
+            order_base_price: base.order_base_price,
+            order_iva_price: base.order_iva_price,
+            order_iva_value: base.order_iva_value,
+            order_total: base.order_total,
 
             usuario: {
-                user_id: row.user_id,
-                first_names: row.first_names,
-                last_names: row.last_names,
-                email: row.email,
+                user_id: base.user_id,
+                first_names: base.first_names,
+                last_names: base.last_names,
+                email: base.email,
             },
 
             empresa: {
-                enterprise_id: row.enterprise_id,
-                enterprise_name: row.enterprise_name,
-                enterprise_description: row.enterprise_description,
+                enterprise_id: base.enterprise_id,
+                enterprise_name: base.enterprise_name,
+                enterprise_description: base.enterprise_description,
             },
 
-            direccion: row.direction_id ? {
-                direction_id: row.direction_id,
-                latitude: row.latitude,
-                longitude: row.longitude,
-                principal_street: row.principal_street,
-                secondary_street: row.secondary_street,
-                alias: row.alias,
+            direccion: base.direction_id ? {
+                direction_id: base.direction_id,
+                latitude: base.latitude,
+                longitude: base.longitude,
+                principal_street: base.principal_street,
+                secondary_street: base.secondary_street,
+                alias: base.alias,
             } : null,
+
+            productos: rows
+                .filter(row => row.product_id)
+                .map(row => ({
+                    order_detail_id: row.order_detail_id,
+                    cantidad: row.order_detail_prod_cant,
+                    base_price: row.order_detail_base_price,
+                    iva_price: row.order_detail_iva_price,
+                    iva_value: row.order_detail_iva_value,
+                    producto: {
+                        product_id: row.product_id,
+                        product_name: row.product_name,
+                        product_description: row.product_description,
+                        product_img: row.product_img,
+                    },
+                }))
         };
 
         res.status(200).json({
@@ -292,58 +357,71 @@ const getPedidoById = async (req, res) => {
 };
 const getPedidoByUserState = async (req, res) => {
     const { user_id, order_status } = req.query;
+
     try {
         const query = `
             SELECT 
-            p.order_id,
-            p.order_date,
-            p.order_observations,
-            p.order_init_date,
-            p.order_finish_date,
-            p.order_status,
-            p.order_base_price,
-            p.order_iva_price,
-            p.order_iva_value,
-            p.order_total,
+                p.order_id,
+                p.order_date,
+                p.order_observations,
+                p.order_init_date,
+                p.order_finish_date,
+                p.order_status,
+                p.order_base_price,
+                p.order_iva_price,
+                p.order_iva_value,
+                (p.order_base_price + p.order_iva_value) AS order_total,
 
-            c.user_id AS cliente_id,
-            c.first_names AS cliente_nombres,
-            c.last_names AS cliente_apellidos,
-            c.email AS cliente_email, 
+                c.user_id AS cliente_id,
+                c.first_names AS cliente_nombres,
+                c.last_names AS cliente_apellidos,
+                c.email AS cliente_email, 
 
-            dir.direction_id,
-            dir.latitude,
-            dir.longitude,
-            dir.principal_street,
-            dir.secondary_street,
-            dir.address_alias,
-            dir.reference, 
+                dir.direction_id,
+                dir.latitude,
+                dir.longitude,
+                dir.principal_street,
+                dir.secondary_street,
+                dir.address_alias,
+                dir.reference, 
 
-            e.enterprise_id,
-            e.enterprise_name,
-            e.enterprise_description, 
+                e.enterprise_id,
+                e.enterprise_name,
+                e.enterprise_description, 
 
-            d.user_id AS dealer_id,
-            d.first_names AS dealer_nombres,
-            d.last_names AS dealer_apellidos,
-            d.email AS dealer_email, 
+                d.user_id AS dealer_id,
+                d.first_names AS dealer_nombres,
+                d.last_names AS dealer_apellidos,
+                d.email AS dealer_email, 
 
-            m.moto_id,
-            m.moto_color,
-            m.moto_placa,
-            m.moto_year
+                m.moto_id,
+                m.moto_color,
+                m.moto_placa,
+                m.moto_year,
+
+                dp.order_detail_id,
+                dp.order_detail_prod_cant,
+                dp.order_detail_base_price,
+                dp.order_detail_iva_price,
+                dp.order_detail_iva_value,
+
+                pr.product_id,
+                pr.product_name,
+                pr.product_description,
+                pr.product_img
 
             FROM pedido p 
             INNER JOIN usuario c ON p.user_id = c.user_id
-            LEFT JOIN direcciones_usuario dir ON dir.user_id = c.user_id 
+            LEFT JOIN direcciones_usuario dir ON dir.direction_id = p.direction_id 
             INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id 
             LEFT JOIN usuario d ON p.dealer_id = d.user_id 
             LEFT JOIN motocicleta m ON m.user_id = d.user_id 
-            WHERE p.user_id = $1 AND p.order_status = $2 
-            `;
+            LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id
+            LEFT JOIN producto pr ON pr.product_id = dp.product_id
+            WHERE p.user_id = $1 AND p.order_status = $2
+        `;
 
         const values = [user_id, order_status];
-
         const { rows } = await pool.query(query, values);
 
         if (rows.length === 0) {
@@ -353,58 +431,80 @@ const getPedidoByUserState = async (req, res) => {
             });
         }
 
-        const row = rows[0];
+        const pedidosMap = new Map();
 
-        const pedidos = rows.map((row) => {
-            return ({
-                orden_id: row.order_id,
-                order_date: row.order_date,
-                order_observations: row.order_observations,
-                order_init_date: row.order_init_date,
-                order_finish_date: row.order_finish_date,
-                order_status: row.order_status,
-                order_base_price: row.order_base_price,
-                order_iva_price: row.order_iva_price,
-                order_iva_value: row.order_iva_value,
-                order_total: row.order_total,
+        for (const row of rows) {
+            if (!pedidosMap.has(row.order_id)) {
+                pedidosMap.set(row.order_id, {
+                    orden_id: row.order_id,
+                    order_date: row.order_date,
+                    order_observations: row.order_observations,
+                    order_init_date: row.order_init_date,
+                    order_finish_date: row.order_finish_date,
+                    order_status: row.order_status,
+                    order_base_price: row.order_base_price,
+                    order_iva_price: row.order_iva_price,
+                    order_iva_value: row.order_iva_value,
+                    order_total: row.order_total,
 
-                usuario: {
-                    user_id: row.cliente_id,
-                    first_names: row.cliente_nombres,
-                    last_names: row.cliente_apellidos,
-                    email: row.cliente_email
-                },
+                    usuario: {
+                        user_id: row.cliente_id,
+                        first_names: row.cliente_nombres,
+                        last_names: row.cliente_apellidos,
+                        email: row.cliente_email
+                    },
 
-                direccion: row.direction_id ? {
-                    direction_id: row.direction_id,
-                    latitude: row.latitude,
-                    longitude: row.longitude,
-                    principal_street: row.principal_street,
-                    secondary_street: row.secondary_street,
-                    alias: row.alias,
-                    reference: row.reference
-                } : null,
+                    direccion: row.direction_id ? {
+                        direction_id: row.direction_id,
+                        latitude: row.latitude,
+                        longitude: row.longitude,
+                        principal_street: row.principal_street,
+                        secondary_street: row.secondary_street,
+                        alias: row.address_alias,
+                        reference: row.reference
+                    } : null,
 
-                empresa: {
-                    enterprise_id: row.enterprise_id,
-                    enterprise_name: row.enterprise_name,
-                    enterprise_description: row.enterprise_description
-                },
+                    empresa: {
+                        enterprise_id: row.enterprise_id,
+                        enterprise_name: row.enterprise_name,
+                        enterprise_description: row.enterprise_description
+                    },
 
-                dealer: row.dealer_id ? {
-                    user_id: row.dealer_id,
-                    first_names: row.dealer_nombres,
-                    last_names: row.dealer_apellidos,
-                    email: row.dealer_email,
-                    motocicleta: row.moto_id ? {
-                        moto_id: row.moto_id,
-                        moto_color: row.moto_color,
-                        moto_placa: row.moto_placa,
-                        moto_year: row.moto_year
-                    } : null
-                } : null
-            });
-        });
+                    dealer: row.dealer_id ? {
+                        user_id: row.dealer_id,
+                        first_names: row.dealer_nombres,
+                        last_names: row.dealer_apellidos,
+                        email: row.dealer_email,
+                        motocicleta: row.moto_id ? {
+                            moto_id: row.moto_id,
+                            moto_color: row.moto_color,
+                            moto_placa: row.moto_placa,
+                            moto_year: row.moto_year
+                        } : null
+                    } : null,
+
+                    productos: []
+                });
+            }
+
+            if (row.product_id) {
+                pedidosMap.get(row.order_id).productos.push({
+                    order_detail_id: row.order_detail_id,
+                    cantidad: row.order_detail_prod_cant,
+                    base_price: row.order_detail_base_price,
+                    iva_price: row.order_detail_iva_price,
+                    iva_value: row.order_detail_iva_value,
+                    producto: {
+                        product_id: row.product_id,
+                        product_name: row.product_name,
+                        product_description: row.product_description,
+                        product_img: row.product_img
+                    }
+                });
+            }
+        }
+
+        const pedidos = Array.from(pedidosMap.values());
 
         res.status(200).json({
             msg: "Pedidos obtenidos con éxito",
@@ -445,7 +545,8 @@ const getPedidoByMotoState = async (req, res) => {
         dir.longitude,
         dir.principal_street,
         dir.secondary_street,
-        dir.alias, 
+        dir.address_alias,
+        dir.reference,
 
         e.enterprise_id,
         e.enterprise_name,
@@ -459,14 +560,27 @@ const getPedidoByMotoState = async (req, res) => {
         m.moto_id,
         m.moto_color,
         m.moto_placa,
-        m.moto_year 
+        m.moto_year,
+
+        dp.order_detail_id,
+        dp.order_detail_prod_cant,
+        dp.order_detail_base_price,
+        dp.order_detail_iva_price,
+        dp.order_detail_iva_value,
+
+        pr.product_id,
+        pr.product_name,
+        pr.product_description,
+        pr.product_img
 
         FROM pedido p 
-        INNER JOIN usuario c ON p.user_id = c.user_id 
-        LEFT JOIN direcciones_usuario dir ON dir.user_id = c.user_id 
+        INNER JOIN usuario c ON p.user_id = c.user_id
+        LEFT JOIN direcciones_usuario dir ON dir.direction_id = p.direction_id
         INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id 
         LEFT JOIN usuario d ON p.dealer_id = d.user_id 
         LEFT JOIN motocicleta m ON m.user_id = d.user_id 
+        LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id
+        LEFT JOIN producto pr ON pr.product_id = dp.product_id
         WHERE p.dealer_id = $1 AND p.order_status = $2
         `;
 
@@ -481,56 +595,81 @@ const getPedidoByMotoState = async (req, res) => {
                 rta: false
             });
         }
-
         const row = rows[0];
+        const pedidosMap = new Map();
 
-        const pedidos = rows.map(row => ({
-            orden_id: row.order_id,
-            order_date: row.order_date,
-            order_observations: row.order_observations,
-            order_init_date: row.order_init_date,
-            order_finish_date: row.order_finish_date,
-            order_status: row.order_status,
-            order_base_price: row.order_base_price,
-            order_iva_price: row.order_iva_price,
-            order_iva_value: row.order_iva_value,
-            order_total: row.order_total,
+        for (const row of rows) {
+            if (!pedidosMap.has(row.order_id)) {
+                pedidosMap.set(row.order_id, {
+                    orden_id: row.order_id,
+                    order_date: row.order_date,
+                    order_observations: row.order_observations,
+                    order_init_date: row.order_init_date,
+                    order_finish_date: row.order_finish_date,
+                    order_status: row.order_status,
+                    order_base_price: row.order_base_price,
+                    order_iva_price: row.order_iva_price,
+                    order_iva_value: row.order_iva_value,
+                    order_total: row.order_total,
 
-            usuario: {
-                user_id: row.cliente_id,
-                first_names: row.cliente_nombres,
-                last_names: row.cliente_apellidos,
-                email: row.cliente_email
-            },
+                    usuario: {
+                        user_id: row.cliente_id,
+                        first_names: row.cliente_nombres,
+                        last_names: row.cliente_apellidos,
+                        email: row.cliente_email
+                    },
 
-            direccion: row.direction_id ? {
-                direction_id: row.direction_id,
-                latitude: row.latitude,
-                longitude: row.longitude,
-                principal_street: row.principal_street,
-                secondary_street: row.secondary_street,
-                alias: row.alias
-            } : null,
+                    direccion: row.direction_id ? {
+                        direction_id: row.direction_id,
+                        latitude: row.latitude,
+                        longitude: row.longitude,
+                        principal_street: row.principal_street,
+                        secondary_street: row.secondary_street,
+                        alias: row.address_alias,
+                        reference: row.reference
+                    } : null,
 
-            empresa: {
-                enterprise_id: row.enterprise_id,
-                enterprise_name: row.enterprise_name,
-                enterprise_description: row.enterprise_description
-            },
+                    empresa: {
+                        enterprise_id: row.enterprise_id,
+                        enterprise_name: row.enterprise_name,
+                        enterprise_description: row.enterprise_description
+                    },
 
-            dealer: row.dealer_id ? {
-                user_id: row.dealer_id,
-                first_names: row.dealer_nombres,
-                last_names: row.dealer_apellidos,
-                email: row.dealer_email,
-                motocicleta: row.moto_id ? {
-                    moto_id: row.moto_id,
-                    moto_color: row.moto_color,
-                    moto_placa: row.moto_placa,
-                    moto_year: row.moto_year
-                } : null
-            } : null
-        }));
+                    dealer: row.dealer_id ? {
+                        user_id: row.dealer_id,
+                        first_names: row.dealer_nombres,
+                        last_names: row.dealer_apellidos,
+                        email: row.dealer_email,
+                        motocicleta: row.moto_id ? {
+                            moto_id: row.moto_id,
+                            moto_color: row.moto_color,
+                            moto_placa: row.moto_placa,
+                            moto_year: row.moto_year
+                        } : null
+                    } : null,
+
+                    productos: []
+                });
+            }
+
+            if (row.product_id) {
+                pedidosMap.get(row.order_id).productos.push({
+                    order_detail_id: row.order_detail_id,
+                    cantidad: row.order_detail_prod_cant,
+                    base_price: row.order_detail_base_price,
+                    iva_price: row.order_detail_iva_price,
+                    iva_value: row.order_detail_iva_value,
+                    producto: {
+                        product_id: row.product_id,
+                        product_name: row.product_name,
+                        product_description: row.product_description,
+                        product_img: row.product_img
+                    }
+                });
+            }
+        }
+
+        const pedidos = Array.from(pedidosMap.values());
 
         res.status(200).json({
             msg: "Pedidos obtenidos con éxito",
@@ -549,55 +688,68 @@ const getPedidoByMoto = async (req, res) => {
     const { dealer_id } = req.query;
     try {
         const query = `
-        SELECT 
-        p.order_id,
-        p.order_date,
-        p.order_observations,
-        p.order_init_date,
-        p.order_finish_date,
-        p.order_status,
-        p.order_base_price,
-        p.order_iva_price,
-        p.order_iva_value,
-        p.order_total, 
+            SELECT 
+            p.order_id,
+            p.order_date,
+            p.order_observations,
+            p.order_init_date,
+            p.order_finish_date,
+            p.order_status,
+            p.order_base_price,
+            p.order_iva_price,
+            p.order_iva_value,
+            p.order_total, 
 
-        c.user_id AS cliente_id,
-        c.first_names AS cliente_nombres,
-        c.last_names AS cliente_apellidos,
-        c.email AS cliente_email, 
+            c.user_id AS cliente_id,
+            c.first_names AS cliente_nombres,
+            c.last_names AS cliente_apellidos,
+            c.email AS cliente_email, 
 
-        dir.direction_id,
-        dir.latitude,
-        dir.longitude,
-        dir.principal_street,
-        dir.secondary_street,
-        dir.alias, 
+            dir.direction_id,
+            dir.latitude,
+            dir.longitude,
+            dir.principal_street,
+            dir.secondary_street,
+            dir.address_alias,
+            dir.reference, 
 
-        e.enterprise_id,
-        e.enterprise_name,
-        e.enterprise_description, 
+            e.enterprise_id,
+            e.enterprise_name,
+            e.enterprise_description, 
 
-        d.user_id AS dealer_id,
-        d.first_names AS dealer_nombres,
-        d.last_names AS dealer_apellidos,
-        d.email AS dealer_email, 
+            d.user_id AS dealer_id,
+            d.first_names AS dealer_nombres,
+            d.last_names AS dealer_apellidos,
+            d.email AS dealer_email, 
 
-        m.moto_id,
-        m.moto_color,
-        m.moto_placa,
-        m.moto_year 
+            m.moto_id,
+            m.moto_color,
+            m.moto_placa,
+            m.moto_year,
+
+            dp.order_detail_id,
+            dp.order_detail_prod_cant,
+            dp.order_detail_base_price,
+            dp.order_detail_iva_price,
+            dp.order_detail_iva_value,
+
+            pr.product_id,
+            pr.product_name,
+            pr.product_description,
+            pr.product_img
 
         FROM pedido p 
         INNER JOIN usuario c ON p.user_id = c.user_id 
-        LEFT JOIN direcciones_usuario dir ON dir.user_id = c.user_id 
+        LEFT JOIN direcciones_usuario dir ON dir.direction_id = p.direction_id
         INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id 
         LEFT JOIN usuario d ON p.dealer_id = d.user_id 
         LEFT JOIN motocicleta m ON m.user_id = d.user_id 
+        LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id
+        LEFT JOIN producto pr ON pr.product_id = dp.product_id
         WHERE p.dealer_id = $1 
         `;
 
         const values = [dealer_id];
-
         const { rows } = await pool.query(query, values);
 
         if (rows.length === 0) {
@@ -607,55 +759,80 @@ const getPedidoByMoto = async (req, res) => {
             });
         }
 
-        const row = rows[0];
+        const pedidosMap = new Map();
 
-        const pedidos = rows.map(row => ({
-            orden_id: row.order_id,
-            order_date: row.order_date,
-            order_observations: row.order_observations,
-            order_init_date: row.order_init_date,
-            order_finish_date: row.order_finish_date,
-            order_status: row.order_status,
-            order_base_price: row.order_base_price,
-            order_iva_price: row.order_iva_price,
-            order_iva_value: row.order_iva_value,
-            order_total: row.order_total,
+        for (const row of rows) {
+            if (!pedidosMap.has(row.order_id)) {
+                pedidosMap.set(row.order_id, {
+                    orden_id: row.order_id,
+                    order_date: row.order_date,
+                    order_observations: row.order_observations,
+                    order_init_date: row.order_init_date,
+                    order_finish_date: row.order_finish_date,
+                    order_status: row.order_status,
+                    order_base_price: row.order_base_price,
+                    order_iva_price: row.order_iva_price,
+                    order_iva_value: row.order_iva_value,
+                    order_total: row.order_total,
 
-            usuario: {
-                user_id: row.cliente_id,
-                first_names: row.cliente_nombres,
-                last_names: row.cliente_apellidos,
-                email: row.cliente_email
-            },
+                    usuario: {
+                        user_id: row.cliente_id,
+                        first_names: row.cliente_nombres,
+                        last_names: row.cliente_apellidos,
+                        email: row.cliente_email
+                    },
 
-            direccion: row.direction_id ? {
-                direction_id: row.direction_id,
-                latitude: row.latitude,
-                longitude: row.longitude,
-                principal_street: row.principal_street,
-                secondary_street: row.secondary_street,
-                alias: row.alias
-            } : null,
+                    direccion: row.direction_id ? {
+                        direction_id: row.direction_id,
+                        latitude: row.latitude,
+                        longitude: row.longitude,
+                        principal_street: row.principal_street,
+                        secondary_street: row.secondary_street,
+                        alias: row.address_alias,
+                        reference: row.reference
+                    } : null,
 
-            empresa: {
-                enterprise_id: row.enterprise_id,
-                enterprise_name: row.enterprise_name,
-                enterprise_description: row.enterprise_description
-            },
+                    empresa: {
+                        enterprise_id: row.enterprise_id,
+                        enterprise_name: row.enterprise_name,
+                        enterprise_description: row.enterprise_description
+                    },
 
-            dealer: row.dealer_id ? {
-                user_id: row.dealer_id,
-                first_names: row.dealer_nombres,
-                last_names: row.dealer_apellidos,
-                email: row.dealer_email,
-                motocicleta: row.moto_id ? {
-                    moto_id: row.moto_id,
-                    moto_color: row.moto_color,
-                    moto_placa: row.moto_placa,
-                    moto_year: row.moto_year
-                } : null
-            } : null
-        }));
+                    dealer: row.dealer_id ? {
+                        user_id: row.dealer_id,
+                        first_names: row.dealer_nombres,
+                        last_names: row.dealer_apellidos,
+                        email: row.dealer_email,
+                        motocicleta: row.moto_id ? {
+                            moto_id: row.moto_id,
+                            moto_color: row.moto_color,
+                            moto_placa: row.moto_placa,
+                            moto_year: row.moto_year
+                        } : null
+                    } : null,
+
+                    productos: []
+                });
+            }
+
+            if (row.product_id) {
+                pedidosMap.get(row.order_id).productos.push({
+                    order_detail_id: row.order_detail_id,
+                    cantidad: row.order_detail_prod_cant,
+                    base_price: row.order_detail_base_price,
+                    iva_price: row.order_detail_iva_price,
+                    iva_value: row.order_detail_iva_value,
+                    producto: {
+                        product_id: row.product_id,
+                        product_name: row.product_name,
+                        product_description: row.product_description,
+                        product_img: row.product_img
+                    }
+                });
+            }
+        }
+
+        const pedidos = Array.from(pedidosMap.values());
 
         res.status(200).json({
             msg: "Pedidos obtenidos con éxito",

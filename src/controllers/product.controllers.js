@@ -165,12 +165,76 @@ const getProductById = async (req, res) => {
             rta: false
         });
     }
-}
+};
+const getProductosPorLocal = async (req, res) => {
+    const { enterprise_id } = req.query;
+    try {
+        const query = `
+        SELECT 
+            pr.product_id,
+            pr.product_name,
+            pr.product_description,
+            pr.product_img,
+            c.category_id,
+            c.category_name,
+            e.enterprise_id,
+            e.enterprise_name,
+            e.enterprise_description
+        FROM 
+            producto pr
+        INNER JOIN categoria c ON pr.category_id = c.category_id
+        INNER JOIN local_empresa e ON pr.enterprise_id = e.enterprise_id
+        WHERE 
+            e.enterprise_id = $1
+        `;
+
+        const values = [enterprise_id];
+        const { rows } = await pool.query(query, values);
+
+        if (rows.length === 0) {
+            return res.status(200).json({
+                msg: "No se encontraron productos.",
+                data: [],
+                rta: false
+            });
+        }
+
+        const productos = rows.map(row => ({
+            product_id: row.product_id,
+            product_name: row.product_name,
+            product_description: row.product_description,
+            product_img: row.product_img,
+            categoria: {
+                category_id: row.category_id,
+                category_name: row.category_name
+            },
+            tienda: {
+                enterprise_id: row.enterprise_id,
+                enterprise_name: row.enterprise_name,
+                enterprise_description: row.enterprise_description
+            }
+        }));
+
+        res.status(200).json({
+            msg: "Productos obtenidos con éxito",
+            data: productos,
+            rta: true
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            msg: "Error al obtener los productos: " + err.message,
+            rta: false
+        });
+    }
+};
+
 
 module.exports = {
     createProduct,
     getProductCategory,
     updateProduct,
     deleteProduct,
-    getProductById
+    getProductById,
+    getProductosPorLocal
 };
