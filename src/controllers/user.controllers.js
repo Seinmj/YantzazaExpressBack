@@ -348,15 +348,15 @@ const updateUser = async (req, res) => {
     try {
         const query = `
             UPDATE usuario
-	        SET  ci=$1, first_names=$2, last_names=$3, phone=$4, notification_token=$5, email=$6, user_type_id=$7, active=$8
-            WHERE user_id = $9
+	        SET  ci=$1, first_names=$2, last_names=$3, phone=$4, notification_token=$5, email=$6, user_type_id=$7
+            WHERE user_id = $8
             RETURNING *;
         `;
 
-        const { rows } = await pool.query(query, [data.cedula, data.nombres, data.apellidos, data.celular, data.token_notific, data.correo, data.tipo_usuario, data.activo, idUsuario]);
+        const { rows } = await pool.query(query, [data.cedula, data.nombres, data.apellidos, data.celular, data.token_notific, data.correo, data.tipo_usuario, idUsuario]);
 
         if (rows.length === 0) {
-            return res.status(404).json({
+            return res.status(200).json({
                 msg: `No se encontró un usuario con el ID ${idUsuario}`,
                 rta: false
             });
@@ -434,6 +434,44 @@ const updateDealer = async (req, res) => {
         });
     }
 };
+
+/* Metodo para actualizar la pass de un repartidor y activar su cuenta */
+const updateDealerPassAndActive = async (req, res) => {
+    const data = req.body;
+
+    try {
+        const dealerquery = `
+            UPDATE usuario
+            SET  user_password=$1, active=$2
+            WHERE user_id = $3
+            RETURNING *;
+        `;
+
+        const hashedPass = await bcrypt.hash(data.contrasenia, 10);
+        const { rows } = await pool.query(dealerquery, [hashedPass, data.active, data.idUsuario]);
+
+        if (rows.length === 0) {
+            return res.status(200).json({
+                msg: `No se encontró un usuario con el ID ${data.idUsuario}`,
+                rta: false
+            });
+        }
+
+        res.status(200).json({
+            msg: "Contraseña y estado actualizados con éxito",
+            data: rows[0],
+            rta: true
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            msg: "Error al actualizar la contraseña y activar el usuario: " + error.message,
+            rta: false
+        });
+
+    }
+}
 
 /* Metodo para actualizar la contraseña del usuario */
 const updateUserContrasenia = async (req, res) => {
@@ -520,5 +558,5 @@ const updateUserToken = async (req, res) => {
 };
 
 module.exports = {
-    register, login, UpdateUserStatus, updateUser, updateUserContrasenia, updateUserToken, getUserByCI, getUserById, registerDealer, getDealers, updateDealer, getAllUsersByType
+    register, login, UpdateUserStatus, updateUser, updateUserContrasenia, updateUserToken, getUserByCI, getUserById, registerDealer, getDealers, updateDealer, getAllUsersByType, updateDealerPassAndActive
 }

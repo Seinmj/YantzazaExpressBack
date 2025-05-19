@@ -104,6 +104,7 @@ const getAllPedidos = async (req, res) => {
                 p.order_id,
                 p.order_date,
                 p.order_observations,
+                p.order_init_date,
                 p.order_finish_date,
                 p.order_status,
                 p.order_base_price,
@@ -125,7 +126,7 @@ const getAllPedidos = async (req, res) => {
                 d.longitude,
                 d.principal_street,
                 d.secondary_street,
-                d.alias,
+                d.address_alias,
 
                 dp.order_detail_id,
                 dp.order_detail_prod_cant,
@@ -164,6 +165,7 @@ const getAllPedidos = async (req, res) => {
                     orden_id: row.order_id,
                     order_date: row.order_date,
                     order_observations: row.order_observations,
+                    order_init_date: row.order_init_date,
                     order_finish_date: row.order_finish_date,
                     order_status: row.order_status,
                     order_base_price: row.order_base_price,
@@ -190,7 +192,7 @@ const getAllPedidos = async (req, res) => {
                         longitude: row.longitude,
                         principal_street: row.principal_street,
                         secondary_street: row.secondary_street,
-                        alias: row.alias
+                        alias: row.address_alias
                     } : null,
 
                     productos: []
@@ -258,7 +260,19 @@ const getPedidoById = async (req, res) => {
                 d.longitude,
                 d.principal_street,
                 d.secondary_street,
-                d.alias,
+                d.address_alias,
+
+                us.user_id AS dealer_id,
+                us.first_names AS dealer_nombres,
+                us.last_names AS dealer_apellidos,
+                us.email AS dealer_email,
+                us.phone AS dealer_phone,
+
+                m.moto_id,
+                m.moto_color,
+                m.moto_placa,
+                m.moto_year,
+                m.moto_model,
 
                 dp.order_detail_id,
                 dp.order_detail_prod_cant,
@@ -269,12 +283,16 @@ const getPedidoById = async (req, res) => {
                 pr.product_id,
                 pr.product_name,
                 pr.product_description,
-                pr.product_img
+                pr.product_img,
+                pr.base_price,
+                pr.iva_porcent
 
             FROM pedido p
             INNER JOIN usuario u ON p.user_id = u.user_id
             INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id
-            LEFT JOIN direcciones_usuario d ON p.direction_id = d.direction_id 
+            LEFT JOIN direcciones_usuario d ON p.direction_id = d.direction_id
+            LEFT JOIN usuario us ON p.dealer_id = us.user_id 
+            LEFT JOIN motocicleta m ON m.user_id = us.user_id 
             LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id
             LEFT JOIN producto pr ON pr.product_id = dp.product_id
             WHERE p.order_id = $1
@@ -322,7 +340,22 @@ const getPedidoById = async (req, res) => {
                 longitude: base.longitude,
                 principal_street: base.principal_street,
                 secondary_street: base.secondary_street,
-                alias: base.alias,
+                alias: base.address_alias,
+            } : null,
+
+            dealer: base.dealer_id ? {
+                user_id: base.dealer_id,
+                first_names: base.dealer_nombres,
+                last_names: base.dealer_apellidos,
+                email: base.dealer_email,
+                phone: base.dealer_phone,
+                motocicleta: base.moto_id ? {
+                    moto_id: base.moto_id,
+                    moto_color: base.moto_color,
+                    moto_placa: base.moto_placa,
+                    moto_year: base.moto_year,
+                    moto_model: base.moto_model
+                } : null
             } : null,
 
             productos: rows
@@ -338,6 +371,8 @@ const getPedidoById = async (req, res) => {
                         product_name: row.product_name,
                         product_description: row.product_description,
                         product_img: row.product_img,
+                        product_base_price: row.base_price,
+                        product_iva_porcent: row.iva_porcent
                     },
                 }))
         };
@@ -375,7 +410,8 @@ const getPedidoByUserState = async (req, res) => {
                 c.user_id AS cliente_id,
                 c.first_names AS cliente_nombres,
                 c.last_names AS cliente_apellidos,
-                c.email AS cliente_email, 
+                c.email AS cliente_email,
+                c.phone AS cliente_phone,
 
                 dir.direction_id,
                 dir.latitude,
@@ -392,12 +428,14 @@ const getPedidoByUserState = async (req, res) => {
                 d.user_id AS dealer_id,
                 d.first_names AS dealer_nombres,
                 d.last_names AS dealer_apellidos,
-                d.email AS dealer_email, 
+                d.email AS dealer_email,
+                d.phone AS dealer_phone,
 
                 m.moto_id,
                 m.moto_color,
                 m.moto_placa,
                 m.moto_year,
+                m.moto_model,
 
                 dp.order_detail_id,
                 dp.order_detail_prod_cant,
@@ -408,7 +446,9 @@ const getPedidoByUserState = async (req, res) => {
                 pr.product_id,
                 pr.product_name,
                 pr.product_description,
-                pr.product_img
+                pr.product_img,
+                pr.base_price,
+                pr.iva_porcent
 
             FROM pedido p 
             INNER JOIN usuario c ON p.user_id = c.user_id
@@ -451,7 +491,8 @@ const getPedidoByUserState = async (req, res) => {
                         user_id: row.cliente_id,
                         first_names: row.cliente_nombres,
                         last_names: row.cliente_apellidos,
-                        email: row.cliente_email
+                        email: row.cliente_email,
+                        phone: row.cliente_phone
                     },
 
                     direccion: row.direction_id ? {
@@ -475,11 +516,13 @@ const getPedidoByUserState = async (req, res) => {
                         first_names: row.dealer_nombres,
                         last_names: row.dealer_apellidos,
                         email: row.dealer_email,
+                        phone: row.dealer_phone,
                         motocicleta: row.moto_id ? {
                             moto_id: row.moto_id,
                             moto_color: row.moto_color,
                             moto_placa: row.moto_placa,
-                            moto_year: row.moto_year
+                            moto_year: row.moto_year,
+                            moto_model: row.moto_model
                         } : null
                     } : null,
 
@@ -498,7 +541,9 @@ const getPedidoByUserState = async (req, res) => {
                         product_id: row.product_id,
                         product_name: row.product_name,
                         product_description: row.product_description,
-                        product_img: row.product_img
+                        product_img: row.product_img,
+                        product_base_price: row.base_price,
+                        product_iva_porcent: row.iva_porcent
                     }
                 });
             }
@@ -538,7 +583,8 @@ const getPedidoByMotoState = async (req, res) => {
         c.user_id AS cliente_id,
         c.first_names AS cliente_nombres,
         c.last_names AS cliente_apellidos,
-        c.email AS cliente_email, 
+        c.email AS cliente_email,
+        c.phone AS cliente_phone,
 
         dir.direction_id,
         dir.latitude,
@@ -555,12 +601,14 @@ const getPedidoByMotoState = async (req, res) => {
         d.user_id AS dealer_id,
         d.first_names AS dealer_nombres,
         d.last_names AS dealer_apellidos,
-        d.email AS dealer_email, 
+        d.email AS dealer_email,
+        d.phone AS dealer_phone,
 
         m.moto_id,
         m.moto_color,
         m.moto_placa,
         m.moto_year,
+        m.moto_model,
 
         dp.order_detail_id,
         dp.order_detail_prod_cant,
@@ -571,7 +619,9 @@ const getPedidoByMotoState = async (req, res) => {
         pr.product_id,
         pr.product_name,
         pr.product_description,
-        pr.product_img
+        pr.product_img,
+        pr.base_price,
+        pr.iva_porcent
 
         FROM pedido p 
         INNER JOIN usuario c ON p.user_id = c.user_id
@@ -591,7 +641,6 @@ const getPedidoByMotoState = async (req, res) => {
         if (rows.length === 0) {
             return res.status(200).json({
                 msg: "No se encontraron pedidos.",
-                data: [],
                 rta: false
             });
         }
@@ -616,7 +665,8 @@ const getPedidoByMotoState = async (req, res) => {
                         user_id: row.cliente_id,
                         first_names: row.cliente_nombres,
                         last_names: row.cliente_apellidos,
-                        email: row.cliente_email
+                        email: row.cliente_email,
+                        phone: row.cliente_phone
                     },
 
                     direccion: row.direction_id ? {
@@ -640,11 +690,13 @@ const getPedidoByMotoState = async (req, res) => {
                         first_names: row.dealer_nombres,
                         last_names: row.dealer_apellidos,
                         email: row.dealer_email,
+                        phone: row.dealer_phone,
                         motocicleta: row.moto_id ? {
                             moto_id: row.moto_id,
                             moto_color: row.moto_color,
                             moto_placa: row.moto_placa,
-                            moto_year: row.moto_year
+                            moto_year: row.moto_year,
+                            moto_model: row.moto_model
                         } : null
                     } : null,
 
@@ -663,7 +715,9 @@ const getPedidoByMotoState = async (req, res) => {
                         product_id: row.product_id,
                         product_name: row.product_name,
                         product_description: row.product_description,
-                        product_img: row.product_img
+                        product_img: row.product_img,
+                        product_base_price: row.base_price,
+                        product_iva_porcent: row.iva_porcent
                     }
                 });
             }
@@ -862,7 +916,7 @@ const updateEstadoPedido = async (req, res) => {
         const { rows } = await pool.query(query, [data.estado, idPedido]);
 
         // Cuando se actualiza el estado del pedido, enviar notificacion al cliente con ayuda de firebase messaging
-        const message = {
+        /* const message = {
             token: data.tokenCliente,
             notification: {
                 title: "Estado del pedido actualizado",
@@ -871,7 +925,7 @@ const updateEstadoPedido = async (req, res) => {
             data: { type: 'chat', order_id: idPedido }
         };
 
-        await admin.messaging().send(message);
+        await admin.messaging().send(message); */
 
         res.status(200).json({
             msg: "Estado del pedido actualizado con éxito",
@@ -901,27 +955,43 @@ const updateEstadoMotoPedido = async (req, res) => {
 
         const { rows } = await pool.query(query, [data.estado, data.dealer, idPedido]);
 
+        /* Al momento de asignar al pedido el id del repartidor debemos cambiar el estado de este a 1 = ocupado */
+        const queryDealer = `
+            UPDATE usuario 
+            SET user_state = $1 
+            WHERE user_id = $2 
+            RETURNING *;
+        `;
+        const { rows: rowsMoto } = await pool.query(queryDealer, [1, data.dealer]);
+
+        if (rowsMoto.length === 0) {
+            return res.status(200).json({
+                msg: "No se encontró el motorizado",
+                rta: false
+            });
+        }
+
         // Cuando se actualiza el estado del pedido, enviar notificacion al motorizado y al cliente con ayuda de firebase messaging
-        const dealerMessage = {
-            token: data.tokenCliente,
-            notification: {
-                title: "Nuevo pedido asignado",
-                body: `Se le ha asignado un nuevo pedido #${idPedido}.`
-            },
-            data: { type: 'chat', order_id: idPedido }
-        };
-
-        await admin.messaging().send(dealerMessage);
-        const clientMessage = {
-            token: data.tokenCliente,
-            notification: {
-                title: "Estado del pedido actualizado",
-                body: `El estado de su pedido #${idPedido} ha cambiado a EN CAMINO`
-            },
-            data: { type: 'chat', order_id: idPedido }
-        };
-
-        await admin.messaging().send(clientMessage);
+        /*  const dealerMessage = {
+             token: data.tokenCliente,
+             notification: {
+                 title: "Nuevo pedido asignado",
+                 body: `Se le ha asignado un nuevo pedido #${idPedido}.`
+             },
+             data: { type: 'chat', order_id: idPedido }
+         };
+ 
+         await admin.messaging().send(dealerMessage);
+         const clientMessage = {
+             token: data.tokenCliente,
+             notification: {
+                 title: "Estado del pedido actualizado",
+                 body: `El estado de su pedido #${idPedido} ha cambiado a EN CAMINO`
+             },
+             data: { type: 'chat', order_id: idPedido }
+         };
+ 
+         await admin.messaging().send(clientMessage); */
 
 
         res.status(200).json({
@@ -952,8 +1022,26 @@ const updateEstadoFechaPedido = async (req, res) => {
 
         const { rows } = await pool.query(query, [data.estado, data.fechaFinalizacion, idPedido]);
 
+        /* Cuando el estado del pedido y la fecha de entrega del pedido se actualicen, debemos cambiar el estado del repartidor para que
+            vuelva a estar disponible para recibir nuevos pedidos.
+        */
+        const queryDealer = `
+            UPDATE usuario 
+            SET user_state = $1 
+            WHERE user_id = $2 
+            RETURNING *;
+        `;
+        const { rows: rowsMoto } = await pool.query(queryDealer, [0, data.idDealer]);
+
+        if (rowsMoto.length === 0) {
+            return res.status(200).json({
+                msg: "No se encontró el motorizado",
+                rta: false
+            });
+        }
+
         res.status(200).json({
-            msg: "Estado y fecha del pedido actualizado con éxito",
+            msg: "Pedido entregado con éxito",
             data: rows[0],
             rta: true
         });

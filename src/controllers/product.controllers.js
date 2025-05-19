@@ -167,7 +167,7 @@ const getProductById = async (req, res) => {
     }
 };
 const getProductosPorLocal = async (req, res) => {
-    const { enterprise_id } = req.query;
+    const { enterprise_id } = req.params;
     try {
         const query = `
         SELECT 
@@ -175,6 +175,11 @@ const getProductosPorLocal = async (req, res) => {
             pr.product_name,
             pr.product_description,
             pr.product_img,
+            pr.base_price,
+            pr.iva_price,
+            pr.iva_value,
+            pr.iva_porcent,
+            pr.stock,
             c.category_id,
             c.category_name,
             e.enterprise_id,
@@ -183,7 +188,7 @@ const getProductosPorLocal = async (req, res) => {
         FROM 
             producto pr
         INNER JOIN categoria c ON pr.category_id = c.category_id
-        INNER JOIN local_empresa e ON pr.enterprise_id = e.enterprise_id
+        INNER JOIN local_empresa e ON c.enterprise_id = e.enterprise_id
         WHERE 
             e.enterprise_id = $1
         `;
@@ -204,6 +209,11 @@ const getProductosPorLocal = async (req, res) => {
             product_name: row.product_name,
             product_description: row.product_description,
             product_img: row.product_img,
+            base_price: row.base_price,
+            iva_price: row.iva_price,
+            iva_value: row.iva_value,
+            iva_porcent: row.iva_porcent,
+            stock: row.stock,
             categoria: {
                 category_id: row.category_id,
                 category_name: row.category_name
@@ -230,11 +240,78 @@ const getProductosPorLocal = async (req, res) => {
 };
 
 
+const getProductosByLocal = async (req, res) => {
+    const { enterprise_id } = req.params;
+    try {
+        const query = `
+        SELECT 
+            pr.product_id,
+            pr.product_name,
+            pr.product_description,
+            pr.product_img,
+            pr.base_price,
+            pr.iva_price,
+            pr.iva_value,
+            pr.iva_porcent,
+            pr.stock,
+            c.category_id,
+            c.category_name
+        FROM 
+            producto pr
+        INNER JOIN categoria c ON pr.category_id = c.category_id
+        INNER JOIN local_empresa e ON c.enterprise_id = e.enterprise_id
+        WHERE 
+            e.enterprise_id = $1
+        `;
+
+        const values = [enterprise_id];
+        const { rows } = await pool.query(query, values);
+
+        if (rows.length === 0) {
+            return res.status(200).json({
+                msg: "No se encontraron productos.",
+                data: [],
+                rta: true
+            });
+        }
+
+        const productos = rows.map(row => ({
+            product_id: row.product_id,
+            product_name: row.product_name,
+            product_description: row.product_description,
+            product_img: row.product_img,
+            base_price: row.base_price,
+            iva_price: row.iva_price,
+            iva_value: row.iva_value,
+            iva_porcent: row.iva_porcent,
+            stock: row.stock,
+            categoria: {
+                category_id: row.category_id,
+                category_name: row.category_name
+            },
+        }));
+
+        res.status(200).json({
+            msg: "Productos obtenidos con éxito",
+            data: productos,
+            rta: true
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({
+            msg: "Error al obtener los productos: " + err.message,
+            rta: false
+        });
+    }
+};
+
+
 module.exports = {
     createProduct,
     getProductCategory,
     updateProduct,
     deleteProduct,
     getProductById,
-    getProductosPorLocal
+    getProductosPorLocal,
+    getProductosByLocal
 };
