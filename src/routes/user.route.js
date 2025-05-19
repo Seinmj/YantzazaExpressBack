@@ -1,6 +1,8 @@
 const express = require('express');
 
-const { login, register, updateUser, updateUserContrasenia, updateUserToken, getUserByCI, getUserById, UpdateUserStatus, registerDealer, getDealers, updateDealer, getAllUsersByType } = require("../controllers/user.controllers");
+const { login, register, updateUser,
+  updateUserContrasenia, updateUserToken, getUserByCI,
+  getUserById, UpdateUserStatus, registerDealer, getDealers, updateDealer, getAllUsersByType, updateDealerPassAndActive } = require("../controllers/user.controllers");
 
 const router = express.Router();
 
@@ -18,7 +20,7 @@ router.get("/movil/obtenerUsuarioCI/:cedula", getUserByCI);
 router.post("/web/RegistroMotorizado", registerDealer);
 router.get("/web/obtenerMotorizados", getDealers);
 router.put("/web/actualizarMotorizado/:idUsuario", updateDealer);
-
+router.put("/movil/actualizarMotorizadoPassAndActive", updateDealerPassAndActive);
 
 router.put("web/actualizarEstadoMoto/:idUsuario", UpdateUserStatus);
 module.exports = router;
