@@ -88,7 +88,7 @@ const createCategory = async (req, res) => {
             [data.nombre_categoria, data.descripcion_categoria, data.empresa_id]
         );
         res.status(200).json({
-            msg: "Categoría registrada",
+            msg: "Categoría registrada con éxito",
             data: rows[0],
             rta:true
         })
