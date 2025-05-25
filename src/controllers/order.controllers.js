@@ -254,6 +254,8 @@ const getPedidoById = async (req, res) => {
                 u.first_names,
                 u.last_names,
                 u.email,
+                u.phone,
+                u.notification_token,
 
                 d.direction_id,
                 d.latitude,
@@ -261,6 +263,7 @@ const getPedidoById = async (req, res) => {
                 d.principal_street,
                 d.secondary_street,
                 d.address_alias,
+                d.reference,
 
                 us.user_id AS dealer_id,
                 us.first_names AS dealer_nombres,
@@ -326,6 +329,8 @@ const getPedidoById = async (req, res) => {
                 first_names: base.first_names,
                 last_names: base.last_names,
                 email: base.email,
+                phone: base.phone,
+                notification_token: base.notification_token,
             },
 
             empresa: {
@@ -341,6 +346,7 @@ const getPedidoById = async (req, res) => {
                 principal_street: base.principal_street,
                 secondary_street: base.secondary_street,
                 alias: base.address_alias,
+                reference: base.reference
             } : null,
 
             dealer: base.dealer_id ? {
@@ -901,6 +907,8 @@ const getPedidoByMoto = async (req, res) => {
         });
     }
 };
+
+/* En este metodo se actualiza el estado de PENDIENTE a ACEPTADO */
 const updateEstadoPedido = async (req, res) => {
     const { idPedido } = req.params;
     const data = req.body;
@@ -916,16 +924,16 @@ const updateEstadoPedido = async (req, res) => {
         const { rows } = await pool.query(query, [data.estado, idPedido]);
 
         // Cuando se actualiza el estado del pedido, enviar notificacion al cliente con ayuda de firebase messaging
-        /* const message = {
+        const message = {
             token: data.tokenCliente,
             notification: {
                 title: "Estado del pedido actualizado",
-                body: `El estado de su pedido #${idPedido} ha cambiado a ACEPTADO.`
+                body: `El estado de su pedido #${idPedido} ha cambiado a ACEPTADO`
             },
             data: { type: 'chat', order_id: idPedido }
         };
 
-        await admin.messaging().send(message); */
+        await admin.messaging().send(message);
 
         res.status(200).json({
             msg: "Estado del pedido actualizado con éxito",
@@ -941,6 +949,8 @@ const updateEstadoPedido = async (req, res) => {
         });
     }
 }
+
+/* Este metodo cambia el estado del pedido de ACEPTADO a EN CAMINO cuando se asigna un repartidor a la orden */
 const updateEstadoMotoPedido = async (req, res) => {
     const { idPedido } = req.params;
     const data = req.body;
@@ -972,26 +982,27 @@ const updateEstadoMotoPedido = async (req, res) => {
         }
 
         // Cuando se actualiza el estado del pedido, enviar notificacion al motorizado y al cliente con ayuda de firebase messaging
-        /*  const dealerMessage = {
-             token: data.tokenCliente,
-             notification: {
-                 title: "Nuevo pedido asignado",
-                 body: `Se le ha asignado un nuevo pedido #${idPedido}.`
-             },
-             data: { type: 'chat', order_id: idPedido }
-         };
- 
-         await admin.messaging().send(dealerMessage);
-         const clientMessage = {
-             token: data.tokenCliente,
-             notification: {
-                 title: "Estado del pedido actualizado",
-                 body: `El estado de su pedido #${idPedido} ha cambiado a EN CAMINO`
-             },
-             data: { type: 'chat', order_id: idPedido }
-         };
- 
-         await admin.messaging().send(clientMessage); */
+        const dealerMessage = {
+            token: data.tokenRepartidor,
+            notification: {
+                title: "Nuevo pedido asignado",
+                body: `Se le ha asignado un nuevo pedido #${idPedido}.`
+            },
+            data: { type: 'chat', order_id: idPedido }
+        };
+
+        await admin.messaging().send(dealerMessage);
+        const clientMessage = {
+            token: data.tokenCliente,
+            notification: {
+                title: "Estado del pedido actualizado",
+                body: `Se ha asignado un repartidor a su pedido #${idPedido}`
+            },
+            data: { type: 'chat', order_id: idPedido }
+        };
+
+        await admin.messaging().send(dealerMessage);
+        await admin.messaging().send(clientMessage);
 
 
         res.status(200).json({
