@@ -121,6 +121,7 @@ const getDealers = async (req, res) => {
             ci: row.ci,
             active: row.active,
             user_state: row.user_state,
+            notification_token: row.notification_token,
             moto: {
                 moto_id: row.moto_id,
                 moto_color: row.moto_color,
