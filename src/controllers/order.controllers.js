@@ -8,8 +8,8 @@ const createPedido = async (req, res) => {
         await pool.query("BEGIN");
         const pedidoQuery = `
             INSERT INTO pedido 
-            (order_date, order_observations, order_init_date, order_finish_date, order_status, dealer_id, order_base_price, order_iva_price, order_iva_value, order_total, enterprise_id, user_id, direction_id) 
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) 
+            (order_date, order_observations, order_init_date, order_finish_date, order_status, dealer_id, order_base_price, order_iva_price, order_iva_value, order_total, user_id, direction_id) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) 
             RETURNING *;
         `;
         const pedidoValues = [
@@ -23,7 +23,6 @@ const createPedido = async (req, res) => {
             data.precio_iva_pedido,
             data.valor_iva_pedido,
             data.valor_total,
-            data.id_local,
             data.id_usuario,
             data.id_direccion
         ];
@@ -33,50 +32,54 @@ const createPedido = async (req, res) => {
 
         const detalleQuery = `
             INSERT INTO detalle_pedido 
-            (order_detail_prod_cant, order_detail_base_price, order_detail_iva_price, order_detail_iva_value, product_id, order_id) 
-            VALUES ($1, $2, $3, $4, $5, $6) 
+            (order_detail_prod_cant, order_detail_base_price, order_detail_iva_price, order_detail_iva_value, product_id, order_id, enterprise_id) 
+            VALUES ($1, $2, $3, $4, $5, $6, $7) 
             RETURNING *;
         `;
 
-        for (const item of data.detalle) {
-            const stockCheckQuery = "SELECT stock FROM producto WHERE product_id = $1;";
-            const stockCheckResult = await pool.query(stockCheckQuery, [item.idProducto]);
+        for (const detalleLocal of data.detalle) {
+            for (const producto of detalleLocal.productos) {
+                const stockCheckQuery = "SELECT stock FROM producto WHERE product_id = $1;";
+                const stockCheckResult = await pool.query(stockCheckQuery, [producto.idProducto]);
 
-            if (stockCheckResult.rows.length === 0) {
-                //throw new Error(`Producto con ID ${item.idProducto} no encontrado.`);
-                return res.status(201).json({
-                    msg: `Producto con ID ${item.idProducto} no encontrado.`,
-                    rta: false
-                });
+                if (stockCheckResult.rows.length === 0) {
+                    await pool.query("ROLLBACK");
+                    return res.status(400).json({
+                        msg: `Producto con ID ${producto.idProducto} no encontrado.`,
+                        rta: false
+                    });
+                }
+
+                const stockDisponible = stockCheckResult.rows[0].stock;
+
+                if (producto.cantidad > stockDisponible) {
+                    await pool.query("ROLLBACK");
+                    return res.status(400).json({
+                        msg: `Stock insuficiente para el producto con ID ${producto.idProducto}.`,
+                        rta: false
+                    });
+                }
+
+                const detalleValues = [
+                    producto.cantidad,
+                    producto.precioBase,
+                    producto.precioIVA,
+                    producto.valorIVA,
+                    producto.idProducto,
+                    idPedido,
+                    detalleLocal.idLocal
+                ];
+
+                await pool.query(detalleQuery, detalleValues);
+
+                // Actualizar el stock
+                const updateStockQuery = `
+                    UPDATE producto 
+                    SET stock = stock - $1 
+                    WHERE product_id = $2;
+                `;
+                await pool.query(updateStockQuery, [producto.cantidad, producto.idProducto]);
             }
-
-            const stockDisponible = stockCheckResult.rows[0].stock;
-
-            if (item.cantidad > stockDisponible) {
-                // new Error(`Stock insuficiente para el producto con ID ${item.idProducto}.`);
-                return res.status(201).json({
-                    msg: `Stock insuficiente para el producto con ID ${item.idProducto}.`,
-                    rta: false
-                });
-            }
-
-            const detalleValues = [
-                item.cantidad,
-                item.precioBase,
-                item.precioIVA,
-                item.valorIVA,
-                item.idProducto,
-                idPedido
-            ];
-            await pool.query(detalleQuery, detalleValues);
-
-            // Se Reduce el stock del producto.
-            const updateStockQuery = `
-                UPDATE producto 
-                SET stock = stock - $1 
-                WHERE product_id = $2;
-            `;
-            await pool.query(updateStockQuery, [item.cantidad, item.idProducto]);
         }
 
         // Confirmar la transacción.
@@ -88,7 +91,7 @@ const createPedido = async (req, res) => {
             rta: true
         });
     } catch (error) {
-        //await client.query("ROLLBACK");
+        await client.query("ROLLBACK");
         console.error(error);
         res.status(500).json({
             msg: "Error al crear el pedido",
