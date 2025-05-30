@@ -144,9 +144,9 @@ const getAllPedidos = async (req, res) => {
 
             FROM pedido p 
             INNER JOIN usuario u ON p.user_id = u.user_id 
-            INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id 
-            LEFT JOIN direcciones_usuario d ON p.direction_id = d.direction_id 
             LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id 
+            LEFT JOIN local_empresa e ON dp.enterprise_id = e.enterprise_id 
+            LEFT JOIN direcciones_usuario d ON p.direction_id = d.direction_id 
             LEFT JOIN producto pr ON pr.product_id = dp.product_id 
             ORDER BY p.order_date DESC
         `;
@@ -295,11 +295,11 @@ const getPedidoById = async (req, res) => {
 
             FROM pedido p
             INNER JOIN usuario u ON p.user_id = u.user_id
-            INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id
+            LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id 
+            LEFT JOIN local_empresa e ON dp.enterprise_id = e.enterprise_id
             LEFT JOIN direcciones_usuario d ON p.direction_id = d.direction_id
             LEFT JOIN usuario us ON p.dealer_id = us.user_id 
             LEFT JOIN motocicleta m ON m.user_id = us.user_id 
-            LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id
             LEFT JOIN producto pr ON pr.product_id = dp.product_id
             WHERE p.order_id = $1
         `;
@@ -460,12 +460,12 @@ const getPedidoByUserState = async (req, res) => {
                 pr.iva_porcent
 
             FROM pedido p 
-            INNER JOIN usuario c ON p.user_id = c.user_id
+            INNER JOIN usuario c ON p.user_id = c.user_id 
+            LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id
             LEFT JOIN direcciones_usuario dir ON dir.direction_id = p.direction_id 
-            INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id 
+            LEFT JOIN local_empresa e ON dp.enterprise_id = e.enterprise_id 
             LEFT JOIN usuario d ON p.dealer_id = d.user_id 
             LEFT JOIN motocicleta m ON m.user_id = d.user_id 
-            LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id
             LEFT JOIN producto pr ON pr.product_id = dp.product_id
             WHERE p.user_id = $1 AND p.order_status = $2
         `;
@@ -633,12 +633,12 @@ const getPedidoByMotoState = async (req, res) => {
         pr.iva_porcent
 
         FROM pedido p 
-        INNER JOIN usuario c ON p.user_id = c.user_id
+        INNER JOIN usuario c ON p.user_id = c.user_id 
+        LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id 
         LEFT JOIN direcciones_usuario dir ON dir.direction_id = p.direction_id
-        INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id 
+        LEFT JOIN local_empresa e ON dp.enterprise_id = e.enterprise_id 
         LEFT JOIN usuario d ON p.dealer_id = d.user_id 
         LEFT JOIN motocicleta m ON m.user_id = d.user_id 
-        LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id
         LEFT JOIN producto pr ON pr.product_id = dp.product_id
         WHERE p.dealer_id = $1 AND p.order_status = $2
         `;
@@ -803,11 +803,11 @@ const getPedidoByMoto = async (req, res) => {
 
         FROM pedido p 
         INNER JOIN usuario c ON p.user_id = c.user_id 
+        LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id 
         LEFT JOIN direcciones_usuario dir ON dir.direction_id = p.direction_id
-        INNER JOIN local_empresa e ON p.enterprise_id = e.enterprise_id 
+        LEFT JOIN local_empresa e ON dp.enterprise_id = e.enterprise_id 
         LEFT JOIN usuario d ON p.dealer_id = d.user_id 
         LEFT JOIN motocicleta m ON m.user_id = d.user_id 
-        LEFT JOIN detalle_pedido dp ON dp.order_id = p.order_id
         LEFT JOIN producto pr ON pr.product_id = dp.product_id
         WHERE p.dealer_id = $1 
         `;
