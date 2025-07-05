@@ -33,6 +33,7 @@ jobs:
         
     - name: Crear archivo de credenciales Firebase
       run: |
+        mkdir -p firebase
         echo "$FIREBASE_KEY" | base64 -d > firebase/yantzazaexpress-d1e68-firebase-adminsdk-fbsvc-f37898d82c.json
       env:
         FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
