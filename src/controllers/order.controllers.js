@@ -35,8 +35,7 @@ const createPedido = async (req, res) => {
             (order_detail_prod_cant, order_detail_base_price, order_detail_iva_price, order_detail_iva_value, product_id, order_id, enterprise_id) 
             VALUES ($1, $2, $3, $4, $5, $6, $7) 
             RETURNING *;
-        `;
-
+        `;      
         for (const detalleLocal of data.detalle) {
             for (const producto of detalleLocal.productos) {
                 const stockCheckQuery = "SELECT stock FROM producto WHERE product_id = $1;";
@@ -67,7 +66,7 @@ const createPedido = async (req, res) => {
                     producto.valorIVA,
                     producto.idProducto,
                     idPedido,
-                    detalleLocal.idLocal
+                    detalleLocal.id_local
                 ];
 
                 await pool.query(detalleQuery, detalleValues);
@@ -91,7 +90,7 @@ const createPedido = async (req, res) => {
             rta: true
         });
     } catch (error) {
-        await client.query("ROLLBACK");
+        await pool.query("ROLLBACK");
         console.error(error);
         res.status(500).json({
             msg: "Error al crear el pedido",
