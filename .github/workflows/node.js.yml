@@ -25,6 +25,14 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
     - run: npm ci
-    - run: |
-        touch .env
-        echo "${{ secrets.PROD_ENV_FILE}}" > .env
+    - name: Crear archivo .env desde secrets
+      run: |
+        echo "$PROD_ENV_FILE" > .env
+      env:
+        PROD_ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+        
+    - name: Crear archivo de credenciales Firebase
+      run: |
+        echo "$FIREBASE_KEY" | base64 -d > firebase/yantzazaexpress-d1e68-firebase-adminsdk-fbsvc-f37898d82c.json
+      env:
+        FIREBASE_KEY: ${{ secrets.FIREBASE_KEY }}
